@@ -1,0 +1,122 @@
+---
+globs: *.vue,*.ts,*.js,*.scss,*.css,package.json
+---
+
+# Vue 3 前端开发规则
+
+## 技术栈规范
+
+- **框架**: Vue 3.3+ with Composition API
+- **语言**: TypeScript 5.0+
+- **构建工具**: Vite 4.0+
+- **UI库**: Element Plus 2.3+
+- **状态管理**: Pinia 2.1+
+- **HTTP客户端**: Axios 1.4+
+
+## 项目结构
+
+```
+src/
+├── components/           # 通用组件
+│   ├── common/          # 基础组件
+│   ├── forms/           # 表单组件
+│   └── layout/          # 布局组件
+├── views/               # 页面视图
+│   ├── auth/           # 认证页面
+│   ├── connections/    # 连接管理
+│   ├── execution/      # DDL执行
+│   └── history/        # 执行历史
+├── stores/              # Pinia状态管理
+├── services/            # API服务
+├── utils/               # 工具函数
+├── types/               # TypeScript类型定义
+└── router/              # 路由配置
+```
+
+## 组件开发规范
+
+### 组件命名
+- 使用PascalCase命名组件文件
+- 组件名应该描述功能，如 `ConnectionForm.vue`
+- 业务组件使用 `MySQL` 前缀，如 `MySQLExecutionPanel.vue`
+
+### Composition API使用
+- 优先使用 `<script setup>` 语法
+- 使用 `ref` 和 `reactive` 管理响应式数据
+- 复用逻辑提取到 composables 中
+
+### TypeScript类型定义
+- 所有props和emit事件需要类型定义
+- API响应数据需要定义接口类型
+- 参考 [API文档](mdc:docs/api-design.md) 中的数据结构定义类型
+
+## UI设计规范
+
+### 色彩系统
+- 主色调: `#1890ff` (科技蓝)
+- 成功色: `#52c41a`
+- 警告色: `#faad14`
+- 错误色: `#ff4d4f`
+- 详细规范参考 [UI规范文档](mdc:docs/ui-spec.md)
+
+### 状态指示
+```scss
+.status-pending { color: #faad14; }    // 等待执行
+.status-running { color: #1890ff; }    // 执行中
+.status-completed { color: #52c41a; }  // 执行成功
+.status-failed { color: #ff4d4f; }     // 执行失败
+.status-cancelled { color: #8c8c8c; }  // 已取消
+```
+
+### 响应式设计
+- 支持断点: xs(480px), sm(576px), md(768px), lg(992px), xl(1200px)
+- 移动端隐藏侧边栏，使用抽屉式导航
+- 表格在小屏幕下使用卡片式布局
+
+## 状态管理规范
+
+### Pinia Store结构
+```typescript
+// stores/auth.ts
+export const useAuthStore = defineStore('auth', () => {
+  const user = ref<User | null>(null)
+  const token = ref<string>('')
+  
+  const login = async (credentials: LoginForm) => {
+    // 登录逻辑
+  }
+  
+  return { user, token, login }
+})
+```
+
+### API服务封装
+- 所有API调用封装在 `services/` 目录下
+- 使用Axios拦截器统一处理认证和错误
+- 响应数据类型化
+
+## 核心页面功能
+
+### DDL执行页面
+- 连接选择器组件
+- DDL语句编辑器（支持语法高亮）
+- 实时执行监控面板
+- 进度条和日志查看器
+
+### 连接管理页面
+- 连接列表卡片展示
+- 创建/编辑连接表单
+- 连接测试功能
+- 环境分类和搜索过滤
+
+### 执行历史页面
+- 历史记录表格
+- 多维度筛选器
+- 执行详情弹窗
+- 重新执行功能
+
+## WebSocket集成
+- 使用Socket.IO客户端连接WebSocket
+- 实时接收执行进度和日志
+- 断线重连机制
+- 多个执行任务的状态同步

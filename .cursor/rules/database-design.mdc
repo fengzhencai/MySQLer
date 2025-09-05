@@ -1,0 +1,154 @@
+---
+globs: *.sql,*migration*,*seed*
+---
+
+# 数据库设计规则
+
+## 表结构规范
+
+参考 [需求文档数据库设计](mdc:docs/requirements.md) 中的完整表结构。
+
+### 核心表说明
+
+#### 1. connections (连接信息表)
+```sql
+CREATE TABLE connections (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL COMMENT '连接名称',
+    environment ENUM('prod','test','dev') DEFAULT 'test',
+    host VARCHAR(255) NOT NULL,
+    port INT DEFAULT 3306,
+    username VARCHAR(100) NOT NULL,
+    password TEXT NOT NULL COMMENT '加密密码',
+    database_name VARCHAR(100) NOT NULL,
+    -- 更多字段参考需求文档
+);
+```
+
+#### 2. execution_records (执行记录表)
+```sql
+CREATE TABLE execution_records (
+    id VARCHAR(36) PRIMARY KEY,
+    connection_id VARCHAR(36) NOT NULL,
+    table_name VARCHAR(200) NOT NULL,
+    ddl_type ENUM('fragment','add_column','modify_column','drop_column','add_index','drop_index','other'),
+    status ENUM('pending','running','completed','failed','cancelled') DEFAULT 'pending',
+    -- 更多字段参考需求文档
+);
+```
+
+#### 3. users (用户表)
+```sql
+CREATE TABLE users (
+    id VARCHAR(36) PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role ENUM('admin','operator','viewer') DEFAULT 'viewer',
+    -- 更多字段参考需求文档
+);
+```
+
+#### 4. audit_logs (操作审计表)
+```sql
+CREATE TABLE audit_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(36),
+    action VARCHAR(100) NOT NULL,
+    resource_type VARCHAR(50),
+    request_data JSON,
+    ip_address VARCHAR(45),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+## 设计原则
+
+### 1. 安全性
+- 密码字段必须加密存储（AES-256）
+- 敏感操作记录到audit_logs表
+- 使用参数化查询防止SQL注入
+
+### 2. 性能优化
+- 重要查询字段建立索引
+- 执行记录表按月分区（大数据量时）
+- 历史数据定期归档
+
+### 3. 数据完整性
+- 外键约束确保数据一致性
+- 枚举类型限制状态值
+- 必要字段设置NOT NULL约束
+
+## 索引设计
+
+```sql
+-- 执行记录索引
+CREATE INDEX idx_execution_status ON execution_records(status, created_at);
+CREATE INDEX idx_execution_table ON execution_records(database_name, table_name);
+CREATE INDEX idx_execution_user ON execution_records(created_by, created_at);
+
+-- 审计日志索引
+CREATE INDEX idx_audit_user_action ON audit_logs(user_id, action, created_at);
+CREATE INDEX idx_audit_created_at ON audit_logs(created_at);
+
+-- 连接信息索引
+CREATE INDEX idx_connection_env ON connections(environment);
+CREATE INDEX idx_connection_name ON connections(name);
+```
+
+## 数据字典
+
+### DDL类型枚举
+- `fragment`: 碎片整理
+- `add_column`: 添加列
+- `modify_column`: 修改列
+- `drop_column`: 删除列
+- `add_index`: 添加索引
+- `drop_index`: 删除索引
+- `other`: 其他类型
+
+### 执行状态枚举
+- `pending`: 等待执行
+- `running`: 执行中
+- `completed`: 执行完成
+- `failed`: 执行失败
+- `cancelled`: 手动取消
+
+### 用户角色枚举
+- `admin`: 管理员（所有权限）
+- `operator`: 操作员（执行DDL权限）
+- `viewer`: 查看者（仅查看权限）
+
+## 迁移脚本规范
+
+### 文件命名
+- 格式: `YYYYMMDD_HHMMSS_description.sql`
+- 示例: `20240115_120000_create_connections_table.sql`
+
+### 脚本结构
+```sql
+-- Migration: 20240115_120000_create_connections_table
+-- Description: 创建连接信息表
+
+-- UP
+CREATE TABLE connections (
+    -- 表结构定义
+);
+
+-- Rollback script (注释形式)
+-- DROP TABLE connections;
+```
+
+## 种子数据
+
+### 默认用户
+```sql
+INSERT INTO users (id, username, password_hash, display_name, role) VALUES
+('admin-001', 'admin', '$2a$10$...', '系统管理员', 'admin'),
+('user-001', 'operator', '$2a$10$...', '操作员', 'operator');
+```
+
+### 测试连接
+```sql
+INSERT INTO connections (id, name, environment, host, port, username, password, database_name) VALUES
+('conn-test-001', '测试环境-示例库', 'test', 'localhost', 3306, 'test_user', 'encrypted_password', 'test_db');
+```

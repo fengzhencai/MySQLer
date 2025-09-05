@@ -1,0 +1,242 @@
+---
+description: "安全开发规范和最佳实践"
+---
+
+# 安全开发规范
+
+基于 [需求文档安全设计](mdc:docs/requirements.md) 和 [架构文档安全架构](mdc:docs/architecture.md) 的安全规范。
+
+## 认证与授权
+
+### JWT认证
+- Token有效期: 24小时
+- 使用HMAC-SHA256签名算法
+- 密钥长度不少于256位
+- 支持Token刷新机制
+
+```go
+// JWT Token结构示例
+type Claims struct {
+    UserID   string `json:"user_id"`
+    Username string `json:"username"`
+    Role     string `json:"role"`
+    jwt.StandardClaims
+}
+```
+
+### 权限控制
+- **admin**: 所有权限
+- **operator**: 执行DDL、查看历史、管理连接
+- **viewer**: 仅查看权限
+
+### 会话管理
+- Redis存储会话信息
+- 支持强制登出
+- 并发会话限制
+- 异常登录检测
+
+## 数据加密
+
+### 敏感数据加密
+```go
+// AES-256-GCM加密数据库密码
+func EncryptPassword(password, key string) (string, error) {
+    // 实现AES-256-GCM加密
+}
+
+// bcrypt加密用户密码
+func HashPassword(password string) (string, error) {
+    return bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+}
+```
+
+### 传输加密
+- 全站HTTPS，强制TLS 1.2+
+- WebSocket使用WSS加密
+- 内部API通信加密
+
+## 输入验证
+
+### 后端验证
+```go
+// 使用validator进行参数验证
+type CreateConnectionRequest struct {
+    Name         string `json:"name" validate:"required,max=100"`
+    Host         string `json:"host" validate:"required,hostname|ip"`
+    Port         int    `json:"port" validate:"min=1,max=65535"`
+    Username     string `json:"username" validate:"required,max=100"`
+    Password     string `json:"password" validate:"required,min=8"`
+    DatabaseName string `json:"database_name" validate:"required,max=100"`
+}
+```
+
+### 前端验证
+- 表单字段实时验证
+- 特殊字符过滤
+- SQL注入防护
+- XSS防护
+
+## DDL操作安全
+
+### 危险操作识别
+```go
+// 危险DDL操作检测
+var dangerousOperations = []string{
+    "DROP TABLE",
+    "DROP DATABASE", 
+    "TRUNCATE TABLE",
+    "DELETE FROM",
+}
+
+func IsDangerousOperation(ddl string) bool {
+    upperDDL := strings.ToUpper(ddl)
+    for _, op := range dangerousOperations {
+        if strings.Contains(upperDDL, op) {
+            return true
+        }
+    }
+    return false
+}
+```
+
+### 操作确认机制
+- 危险操作二次确认
+- 大表操作风险提示
+- 生产环境额外确认
+- 操作时间窗口限制
+
+### 执行环境隔离
+- Docker容器隔离执行
+- 限制容器网络访问
+- 资源使用限制
+- 自动清理机制
+
+## 操作审计
+
+### 审计日志记录
+```go
+// 审计日志结构
+type AuditLog struct {
+    ID           int64           `json:"id"`
+    UserID       string          `json:"user_id"`
+    Username     string          `json:"username"`
+    Action       string          `json:"action"`
+    ResourceType string          `json:"resource_type"`
+    ResourceID   string          `json:"resource_id"`
+    RequestData  json.RawMessage `json:"request_data"`
+    ResponseData json.RawMessage `json:"response_data"`
+    IPAddress    string          `json:"ip_address"`
+    UserAgent    string          `json:"user_agent"`
+    CreatedAt    time.Time       `json:"created_at"`
+}
+```
+
+### 关键操作审计
+- 用户登录/登出
+- 连接创建/修改/删除
+- DDL执行提交/停止
+- 敏感配置修改
+- 权限变更操作
+
+## API安全
+
+### 请求限流
+- 全局限流: 1000 requests/minute per IP
+- 用户限流: 100 requests/minute per user  
+- 执行限流: 最多10个并发任务
+
+### 安全头设置
+```http
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+X-XSS-Protection: 1; mode=block
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+Content-Security-Policy: default-src 'self'
+```
+
+### 敏感信息处理
+- API响应中密码字段使用 `***` 替换
+- 日志中自动脱敏敏感信息
+- 错误信息不暴露内部细节
+
+## 容器安全
+
+### Docker安全配置
+```yaml
+security_opt:
+  - no-new-privileges:true
+read_only: true
+user: "1000:1000"
+cap_drop:
+  - ALL
+cap_add:
+  - NET_CONNECT
+```
+
+### 镜像安全
+- 使用官方基础镜像
+- 定期更新依赖包
+- 镜像安全扫描
+- 最小权限原则
+
+## 错误处理
+
+### 安全错误处理
+```go
+// 不暴露内部错误信息
+func HandleError(err error, c *gin.Context) {
+    log.Error("Internal error: ", err)
+    c.JSON(500, gin.H{
+        "code": 500,
+        "message": "服务器内部错误",
+        "timestamp": time.Now(),
+    })
+}
+```
+
+### 敏感信息过滤
+- 错误日志中过滤密码等敏感信息
+- 堆栈信息不返回给前端
+- 数据库错误信息脱敏
+
+## 开发环境安全
+
+### 开发规范
+- 不在代码中硬编码密钥
+- 使用环境变量管理敏感配置
+- 测试数据脱敏处理
+- 定期安全代码审查
+
+### Git安全
+- `.gitignore` 包含敏感文件
+- 不提交 `.env` 等配置文件
+- 分支保护规则
+- 提交签名验证
+
+## 监控告警
+
+### 安全监控
+- 异常登录行为检测
+- 大量失败请求告警
+- 权限异常使用告警
+- 敏感操作实时通知
+
+### 日志监控
+- 错误日志实时监控
+- 性能异常检测
+- 资源使用告警
+- 安全事件追踪
+
+## 应急响应
+
+### 安全事件处理
+1. **立即响应**: 隔离受影响系统
+2. **影响评估**: 评估数据泄露风险
+3. **修复漏洞**: 紧急修复安全问题
+4. **事后总结**: 完善安全防护措施
+
+### 备份恢复
+- 数据库定期备份
+- 配置文件版本控制
+- 快速回滚机制
+- 灾难恢复预案

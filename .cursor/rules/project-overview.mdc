@@ -1,0 +1,39 @@
+---
+alwaysApply: true
+---
+
+# MySQLer 项目总览规则
+
+MySQLer 是一个基于Web的 pt-online-schema-change 工具管理平台，提供可视化界面来执行MySQL在线表结构变更。
+
+## 项目架构
+
+- **后端**: Go + Gin框架，使用GORM操作MySQL数据库
+- **前端**: Vue 3 + TypeScript + Element Plus + Vite
+- **容器化**: Docker + Docker Compose
+- **实时通信**: WebSocket (gorilla/websocket)
+- **数据库**: MySQL 8.0+ (应用数据) + Redis (缓存)
+
+## 核心模块
+
+1. **连接管理模块** - 管理数据库连接配置
+2. **DDL执行模块** - 核心功能，执行pt-online-schema-change命令
+3. **实时监控模块** - WebSocket实时推送执行进度
+4. **历史记录管理** - 执行历史查询和管理
+5. **系统管理模块** - 用户管理、权限控制、系统配置
+
+## 关键文档
+
+- [需求文档](mdc:docs/requirements.md) - 详细功能需求
+- [架构文档](mdc:docs/architecture.md) - 技术架构设计
+- [API设计](mdc:docs/api-design.md) - RESTful API规范
+- [UI规范](mdc:docs/ui-spec.md) - 前端设计规范
+- [任务清单](mdc:docs/todo-list.md) - 开发计划和进度
+
+## 开发规范
+
+- 使用中文注释和文档
+- 遵循RESTful API设计原则
+- 实现完整的错误处理和日志记录
+- 所有敏感操作需要权限验证
+- 数据库密码等敏感信息需要加密存储

@@ -1,0 +1,461 @@
+---
+globs: *_test.go,*.test.ts,*.spec.ts
+---
+
+# API开发与测试规范
+
+基于 [API设计文档](mdc:docs/api-design.md) 的接口开发和测试规范。
+
+## API开发规范
+
+### RESTful设计原则
+- 使用HTTP动词表示操作：GET(查询)、POST(创建)、PUT(更新)、DELETE(删除)
+- URL路径表示资源，使用复数形式
+- 使用HTTP状态码表示操作结果
+- 统一响应格式
+
+### 响应格式标准
+```go
+// 统一响应结构
+type ApiResponse struct {
+    Code      int         `json:"code"`
+    Message   string      `json:"message"`
+    Data      interface{} `json:"data,omitempty"`
+    Error     *ErrorInfo  `json:"error,omitempty"`
+    Timestamp time.Time   `json:"timestamp"`
+    RequestID string      `json:"request_id"`
+}
+
+// 错误信息结构
+type ErrorInfo struct {
+    Type    string      `json:"type"`
+    Details []ErrorDetail `json:"details,omitempty"`
+}
+
+type ErrorDetail struct {
+    Field   string `json:"field"`
+    Message string `json:"message"`
+}
+```
+
+### 核心API端点
+
+#### 认证接口
+```go
+// POST /api/v1/auth/login
+type LoginRequest struct {
+    Username string `json:"username" validate:"required"`
+    Password string `json:"password" validate:"required"`
+}
+
+// GET /api/v1/auth/profile
+// POST /api/v1/auth/logout
+// POST /api/v1/auth/refresh
+```
+
+#### 连接管理接口
+```go
+// GET /api/v1/connections
+// POST /api/v1/connections
+// PUT /api/v1/connections/{id}
+// DELETE /api/v1/connections/{id}
+// POST /api/v1/connections/{id}/test
+
+type ConnectionRequest struct {
+    Name            string `json:"name" validate:"required,max=100"`
+    Environment     string `json:"environment" validate:"required,oneof=prod test dev"`
+    Host            string `json:"host" validate:"required"`
+    Port            int    `json:"port" validate:"min=1,max=65535"`
+    Username        string `json:"username" validate:"required"`
+    Password        string `json:"password" validate:"required"`
+    DatabaseName    string `json:"database_name" validate:"required"`
+    Description     string `json:"description" validate:"max=500"`
+    ConnectTimeout  int    `json:"connect_timeout" validate:"min=1,max=300"`
+    Charset         string `json:"charset" validate:"oneof=utf8 utf8mb4"`
+    UseSSL          bool   `json:"use_ssl"`
+}
+```
+
+#### DDL执行接口
+```go
+// POST /api/v1/executions
+// GET /api/v1/executions
+// GET /api/v1/executions/{id}
+// POST /api/v1/executions/{id}/stop
+// POST /api/v1/executions/{id}/retry
+
+type ExecutionRequest struct {
+    ConnectionID     string                 `json:"connection_id" validate:"required,uuid"`
+    DatabaseName     string                 `json:"database_name" validate:"required"`
+    TableName        string                 `json:"table_name" validate:"required"`
+    DDLType          string                 `json:"ddl_type" validate:"required,oneof=fragment add_column modify_column drop_column add_index drop_index other"`
+    DDLStatement     string                 `json:"ddl_statement"`
+    ExecutionParams  ExecutionParams        `json:"execution_params"`
+    Description      string                 `json:"description" validate:"max=500"`
+}
+
+type ExecutionParams struct {
+    ChunkSize        int    `json:"chunk_size" validate:"min=1000,max=50000"`
+    MaxLoad          string `json:"max_load"`
+    CriticalLoad     string `json:"critical_load"`
+    Charset          string `json:"charset" validate:"oneof=utf8 utf8mb4"`
+    LockWaitTimeout  int    `json:"lock_wait_timeout" validate:"min=1,max=3600"`
+    DryRun           bool   `json:"dry_run"`
+}
+```
+
+## 错误处理规范
+
+### HTTP状态码映射
+```go
+const (
+    CodeSuccess           = 200  // 操作成功
+    CodeCreated           = 201  // 创建成功
+    CodeBadRequest        = 400  // 请求参数错误
+    CodeUnauthorized      = 401  // 未认证
+    CodeForbidden         = 403  // 权限不足
+    CodeNotFound          = 404  // 资源不存在
+    CodeConflict          = 409  // 资源冲突
+    CodeUnprocessable     = 422  // 业务逻辑错误
+    CodeInternalError     = 500  // 服务器内部错误
+    CodeServiceUnavailable = 503  // 服务不可用
+    
+    // 业务错误码
+    CodeDBConnectionFailed = 1001 // 数据库连接失败
+    CodeDDLSyntaxError     = 1002 // DDL语法错误
+    CodeExecutionTimeout   = 1003 // 执行超时
+    CodeDockerError        = 1004 // Docker容器错误
+    CodeTableNotFound      = 1005 // 目标表不存在
+    CodePermissionDenied   = 1006 // 权限不足
+    CodeTableBusy         = 1007 // 表正在执行DDL
+    CodeDiskSpaceInsufficient = 1008 // 存储空间不足
+)
+```
+
+### 错误处理示例
+```go
+// 统一错误处理中间件
+func ErrorHandler() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        c.Next()
+        
+        if len(c.Errors) > 0 {
+            err := c.Errors.Last()
+            
+            switch e := err.Err.(type) {
+            case *ValidationError:
+                c.JSON(400, ApiResponse{
+                    Code:    400,
+                    Message: "参数验证失败",
+                    Error:   &ErrorInfo{Type: "ValidationError", Details: e.Details},
+                    Timestamp: time.Now(),
+                })
+            case *BusinessError:
+                c.JSON(422, ApiResponse{
+                    Code:    e.Code,
+                    Message: e.Message,
+                    Timestamp: time.Now(),
+                })
+            default:
+                c.JSON(500, ApiResponse{
+                    Code:    500,
+                    Message: "服务器内部错误",
+                    Timestamp: time.Now(),
+                })
+            }
+        }
+    }
+}
+```
+
+## WebSocket接口规范
+
+### 连接建立
+```javascript
+// WebSocket连接格式
+const ws = new WebSocket(`wss://localhost:8080/ws/execution/${executionId}?token=${jwt_token}`);
+```
+
+### 消息格式
+```typescript
+// 进度推送消息
+interface ProgressMessage {
+    type: 'progress';
+    data: {
+        execution_id: string;
+        status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+        progress: number;
+        processed_rows: number;
+        total_rows: number;
+        current_speed: number;
+        current_stage: string;
+        estimated_remaining: string;
+    };
+}
+
+// 日志推送消息
+interface LogMessage {
+    type: 'log';
+    data: {
+        execution_id: string;
+        timestamp: string;
+        level: 'debug' | 'info' | 'warn' | 'error';
+        message: string;
+    };
+}
+
+// 状态变更消息
+interface StatusChangeMessage {
+    type: 'status_change';
+    data: {
+        execution_id: string;
+        old_status: string;
+        new_status: string;
+        timestamp: string;
+    };
+}
+```
+
+## 测试规范
+
+### 单元测试
+```go
+// 服务层测试示例
+func TestConnectionService_Create(t *testing.T) {
+    tests := []struct {
+        name    string
+        conn    *Connection
+        wantErr bool
+    }{
+        {
+            name: "valid connection",
+            conn: &Connection{
+                Name:         "test-conn",
+                Environment:  "test",
+                Host:         "localhost",
+                Port:         3306,
+                Username:     "test",
+                Password:     "password",
+                DatabaseName: "test_db",
+            },
+            wantErr: false,
+        },
+        {
+            name: "invalid host",
+            conn: &Connection{
+                Name: "test-conn",
+                Host: "",
+            },
+            wantErr: true,
+        },
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            service := NewConnectionService()
+            _, err := service.Create(tt.conn)
+            
+            if (err != nil) != tt.wantErr {
+                t.Errorf("Create() error = %v, wantErr %v", err, tt.wantErr)
+            }
+        })
+    }
+}
+```
+
+### 集成测试
+```go
+// API集成测试示例
+func TestConnectionAPI_Integration(t *testing.T) {
+    // 设置测试数据库
+    testDB := setupTestDB()
+    defer teardownTestDB(testDB)
+    
+    // 创建测试服务器
+    router := setupTestRouter()
+    server := httptest.NewServer(router)
+    defer server.Close()
+    
+    // 测试创建连接
+    t.Run("create connection", func(t *testing.T) {
+        payload := `{
+            "name": "test-connection",
+            "environment": "test",
+            "host": "localhost",
+            "port": 3306,
+            "username": "test",
+            "password": "password",
+            "database_name": "test_db"
+        }`
+        
+        resp, err := http.Post(server.URL+"/api/v1/connections", 
+            "application/json", strings.NewReader(payload))
+        
+        assert.NoError(t, err)
+        assert.Equal(t, 201, resp.StatusCode)
+        
+        var response ApiResponse
+        json.NewDecoder(resp.Body).Decode(&response)
+        assert.Equal(t, 201, response.Code)
+        assert.NotNil(t, response.Data)
+    })
+}
+```
+
+### 前端API测试
+```typescript
+// API服务测试
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { connectionService } from '@/services/connections'
+import type { Connection } from '@/types/connection'
+
+describe('ConnectionService', () => {
+    beforeEach(() => {
+        // Mock axios
+        vi.clearAllMocks()
+    })
+    
+    it('should create connection successfully', async () => {
+        const mockConnection: Partial<Connection> = {
+            name: '测试连接',
+            environment: 'test',
+            host: 'localhost',
+            port: 3306
+        }
+        
+        const mockResponse = {
+            code: 201,
+            message: 'success',
+            data: { id: 'conn-123', ...mockConnection }
+        }
+        
+        vi.mocked(axios.post).mockResolvedValue({ data: mockResponse })
+        
+        const result = await connectionService.create(mockConnection)
+        
+        expect(result.data.id).toBe('conn-123')
+        expect(axios.post).toHaveBeenCalledWith('/api/v1/connections', mockConnection)
+    })
+    
+    it('should handle validation error', async () => {
+        const invalidConnection = { name: '' }
+        
+        const mockError = {
+            response: {
+                data: {
+                    code: 400,
+                    message: '参数验证失败',
+                    error: {
+                        type: 'ValidationError',
+                        details: [{ field: 'name', message: '连接名称不能为空' }]
+                    }
+                }
+            }
+        }
+        
+        vi.mocked(axios.post).mockRejectedValue(mockError)
+        
+        await expect(connectionService.create(invalidConnection))
+            .rejects.toThrow('参数验证失败')
+    })
+})
+```
+
+### E2E测试
+```typescript
+// Playwright E2E测试示例
+import { test, expect } from '@playwright/test'
+
+test.describe('DDL执行流程', () => {
+    test('should execute DDL successfully', async ({ page }) => {
+        // 登录
+        await page.goto('/login')
+        await page.fill('[data-testid=username]', 'admin')
+        await page.fill('[data-testid=password]', 'password')
+        await page.click('[data-testid=login-btn]')
+        
+        // 进入DDL执行页面
+        await page.goto('/execution')
+        
+        // 选择连接
+        await page.selectOption('[data-testid=connection-select]', 'conn-test-001')
+        
+        // 输入表名
+        await page.fill('[data-testid=table-name]', 'test_table')
+        
+        // 选择碎片整理
+        await page.check('[data-testid=operation-fragment]')
+        
+        // 提交执行
+        await page.click('[data-testid=execute-btn]')
+        
+        // 验证执行状态
+        await expect(page.locator('[data-testid=execution-status]'))
+            .toContainText('执行中')
+        
+        // 等待执行完成
+        await expect(page.locator('[data-testid=execution-status]'))
+            .toContainText('执行完成', { timeout: 30000 })
+    })
+})
+```
+
+## 性能测试
+
+### API性能测试
+```go
+// 压力测试示例
+func BenchmarkConnectionAPI_Create(b *testing.B) {
+    router := setupBenchmarkRouter()
+    
+    b.ResetTimer()
+    b.RunParallel(func(pb *testing.PB) {
+        for pb.Next() {
+            w := httptest.NewRecorder()
+            req := httptest.NewRequest("POST", "/api/v1/connections", 
+                strings.NewReader(`{"name":"test","host":"localhost"}`))
+            req.Header.Set("Content-Type", "application/json")
+            
+            router.ServeHTTP(w, req)
+            
+            if w.Code != 201 {
+                b.Errorf("Expected 201, got %d", w.Code)
+            }
+        }
+    })
+}
+```
+
+### 并发测试
+```go
+// WebSocket并发连接测试
+func TestWebSocket_ConcurrentConnections(t *testing.T) {
+    server := setupWebSocketServer()
+    defer server.Close()
+    
+    concurrency := 100
+    var wg sync.WaitGroup
+    
+    for i := 0; i < concurrency; i++ {
+        wg.Add(1)
+        go func(id int) {
+            defer wg.Done()
+            
+            ws, _, err := websocket.DefaultDialer.Dial(
+                server.URL+"/ws/execution/test-"+strconv.Itoa(id), nil)
+            assert.NoError(t, err)
+            defer ws.Close()
+            
+            // 测试消息发送和接收
+            err = ws.WriteMessage(websocket.TextMessage, []byte("test"))
+            assert.NoError(t, err)
+            
+            _, message, err := ws.ReadMessage()
+            assert.NoError(t, err)
+            assert.NotEmpty(t, message)
+        }(i)
+    }
+    
+    wg.Wait()
+}
+```

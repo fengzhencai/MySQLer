@@ -1,0 +1,65 @@
+---
+globs: *.go,go.mod,go.sum
+---
+
+# Go 后端开发规则
+
+## 项目结构规范
+
+```
+cmd/server/main.go          # 应用入口
+internal/
+├── config/                 # 配置管理
+├── models/                 # GORM数据模型
+├── services/               # 业务逻辑层
+├── handlers/               # HTTP处理器
+├── middleware/             # 中间件
+├── utils/                  # 工具函数
+└── database/               # 数据库操作
+```
+
+## 开发规范
+
+### 数据模型设计
+- 所有模型都应继承基础字段（ID、CreatedAt、UpdatedAt）
+- 使用GORM标签进行数据库映射
+- 敏感字段（如密码）需要使用结构体标签 `json:"-"` 隐藏
+- 参考 [需求文档数据库设计](mdc:docs/requirements.md) 中的表结构
+
+### API响应格式
+统一使用以下响应格式：
+```go
+type Response struct {
+    Code      int         `json:"code"`
+    Message   string      `json:"message"`
+    Data      interface{} `json:"data,omitempty"`
+    Error     *ErrorInfo  `json:"error,omitempty"`
+    Timestamp time.Time   `json:"timestamp"`
+    RequestID string      `json:"request_id"`
+}
+```
+
+### 错误处理
+- 使用统一的错误码，参考 [API文档错误码定义](mdc:docs/api-design.md)
+- 数据库连接失败: 1001
+- DDL语法错误: 1002
+- 执行超时: 1003
+- Docker容器启动失败: 1004
+
+### 安全要求
+- 所有API接口必须有JWT认证中间件保护
+- 数据库密码使用AES-256加密存储
+- 输入参数必须使用validator进行验证
+- 敏感操作需要记录审计日志
+
+### Docker集成
+- pt-online-schema-change命令在独立Docker容器中执行
+- 容器资源限制：CPU 2核，内存2GB
+- 使用基础镜像：`registry-harbor.yafex.cn/base/percona-server:5.7v6`
+- 容器执行完成后自动清理
+
+### WebSocket实时通信
+- 执行进度实时推送给前端
+- 支持日志流式传输
+- 连接断开自动重连机制
+- 消息格式参考 [API文档WebSocket部分](mdc:docs/api-design.md)
