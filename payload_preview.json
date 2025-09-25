@@ -1,0 +1,10 @@
+﻿{
+  "host": "127.0.0.1",
+  "port": 3307,
+  "username": "root",
+  "password": "root123456",
+  "database": "test_db",
+  "table": "test_users",
+  "ddl_statement": "ADD COLUMN phone VARCHAR(20) NULL AFTER email",
+  "params": { "chunk_size": 1000, "dry_run": true }
+}

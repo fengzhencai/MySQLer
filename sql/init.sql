@@ -1,4 +1,7 @@
 -- MySQLer 数据库初始化脚本
+-- 保证客户端/脚本以 utf8mb4 方式与服务端交互，避免中文乱码
+SET NAMES utf8mb4;
+SET character_set_client = utf8mb4;
 -- 创建数据库（如果不存在）
 CREATE DATABASE IF NOT EXISTS `mysqler` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 

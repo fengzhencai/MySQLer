@@ -13,6 +13,7 @@ type Services struct {
 	ExecutionEngine *ExecutionEngine
 	User            *UserService
 	Audit           *AuditService
+	MVP             *MVPService
 }
 
 // NewServices 创建服务容器
@@ -32,5 +33,6 @@ func NewServices(db *gorm.DB, cfg *config.Config) (*Services, error) {
 		ExecutionEngine: executionEngine,
 		User:            NewUserService(db, cfg),
 		Audit:           NewAuditService(db, cfg),
+		MVP:             NewMVPService(cfg),
 	}, nil
 }

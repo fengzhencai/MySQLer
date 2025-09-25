@@ -5,11 +5,6 @@
       <div class="header-left">
         <el-radio-group v-model="ddlType" @change="handleDDLTypeChange">
           <el-radio-button label="fragment">碎片整理</el-radio-button>
-          <el-radio-button label="add_column">添加列</el-radio-button>
-          <el-radio-button label="modify_column">修改列</el-radio-button>
-          <el-radio-button label="drop_column">删除列</el-radio-button>
-          <el-radio-button label="add_index">添加索引</el-radio-button>
-          <el-radio-button label="drop_index">删除索引</el-radio-button>
           <el-radio-button label="other">自定义</el-radio-button>
         </el-radio-group>
       </div>
@@ -187,11 +182,11 @@ const handleClear = () => {
 const getTemplateTitle = () => {
   const titles: Record<DDLType, string> = {
     fragment: '碎片整理操作',
-    add_column: '添加列操作',
-    modify_column: '修改列操作',
-    drop_column: '删除列操作',
-    add_index: '添加索引操作',
-    drop_index: '删除索引操作',
+    add_column: '自定义DDL',
+    modify_column: '自定义DDL',
+    drop_column: '自定义DDL',
+    add_index: '自定义DDL',
+    drop_index: '自定义DDL',
     other: '自定义DDL'
   }
   return titles[ddlType.value] || '自定义DDL'
@@ -200,11 +195,11 @@ const getTemplateTitle = () => {
 const getTemplateDescription = () => {
   const descriptions: Record<DDLType, string> = {
     fragment: '对表进行碎片整理，优化存储空间和查询性能。无需手动编写DDL，系统会自动生成。',
-    add_column: '向表中添加新列。请指定列名、数据类型和约束。',
-    modify_column: '修改现有列的属性，如数据类型、默认值或约束。',
-    drop_column: '从表中删除指定列。注意：删除操作不可逆。',
-    add_index: '为表添加索引以提高查询性能。可以是普通索引、唯一索引或复合索引。',
-    drop_index: '删除表上的现有索引。请确认索引名称正确。',
+    add_column: '自定义DDL操作，支持任何有效的ALTER TABLE语句。',
+    modify_column: '自定义DDL操作，支持任何有效的ALTER TABLE语句。',
+    drop_column: '自定义DDL操作，支持任何有效的ALTER TABLE语句。',
+    add_index: '自定义DDL操作，支持任何有效的ALTER TABLE语句。',
+    drop_index: '自定义DDL操作，支持任何有效的ALTER TABLE语句。',
     other: '自定义DDL操作，支持任何有效的ALTER TABLE语句。'
   }
   return descriptions[ddlType.value] || ''
@@ -228,11 +223,11 @@ const getTemplateContent = () => {
   
   const templates: Record<DDLType, string> = {
     fragment: '',
-    add_column: `ADD COLUMN new_column VARCHAR(255) NOT NULL DEFAULT ''`,
-    modify_column: `MODIFY COLUMN existing_column VARCHAR(512) NOT NULL`,
-    drop_column: `DROP COLUMN old_column`,
-    add_index: `ADD INDEX idx_column_name (column_name)`,
-    drop_index: `DROP INDEX idx_name`,
+    add_column: '',
+    modify_column: '',
+    drop_column: '',
+    add_index: '',
+    drop_index: '',
     other: ''
   }
   
@@ -246,11 +241,11 @@ const getPlaceholder = () => {
   
   const placeholders: Record<DDLType, string> = {
     fragment: '',
-    add_column: '请输入添加列的DDL，例如：ADD COLUMN new_column VARCHAR(255) NOT NULL',
-    modify_column: '请输入修改列的DDL，例如：MODIFY COLUMN existing_column TEXT',
-    drop_column: '请输入删除列的DDL，例如：DROP COLUMN old_column',
-    add_index: '请输入添加索引的DDL，例如：ADD INDEX idx_name (column_name)',
-    drop_index: '请输入删除索引的DDL，例如：DROP INDEX idx_name',
+    add_column: '请输入自定义的ALTER TABLE DDL语句',
+    modify_column: '请输入自定义的ALTER TABLE DDL语句',
+    drop_column: '请输入自定义的ALTER TABLE DDL语句',
+    add_index: '请输入自定义的ALTER TABLE DDL语句',
+    drop_index: '请输入自定义的ALTER TABLE DDL语句',
     other: '请输入自定义的ALTER TABLE DDL语句'
   }
   

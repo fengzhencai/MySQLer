@@ -277,6 +277,8 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import ExecutionService from '@/services/execution'
+import ConnectionService from '@/services/connection'
 import {
   Document,
   Refresh,
@@ -325,17 +327,13 @@ const fetchExecutions = async () => {
       status: filterForm.status || undefined,
       connection_id: filterForm.connection_id || undefined,
       start_date: filterForm.start_date || undefined,
-      end_date: filterForm.end_date || undefined
+      end_date: filterForm.end_date || undefined,
+      keyword: filterForm.keyword || undefined
     }
     
-    // TODO: 调用API获取执行记录
-    console.log('获取执行记录:', params)
-    
-    // 模拟数据
-    executions.value = []
-    total.value = 0
-    
-    ElMessage.info('执行历史功能开发中...')
+    const resp = await ExecutionService.getExecutions(params)
+    executions.value = resp.records
+    total.value = resp.total
   } catch (error) {
     console.error('获取执行历史失败:', error)
     ElMessage.error('获取执行历史失败')
@@ -401,7 +399,9 @@ const handleStop = async (execution: ExecutionRecord) => {
       }
     )
     
-    ElMessage.info('停止执行功能开发中...')
+    await ExecutionService.stopExecution(execution.id)
+    ElMessage.success('已提交停止请求')
+    fetchExecutions()
   } catch (error) {
     // 用户取消操作
   }
@@ -419,7 +419,10 @@ const handleReExecute = async (execution: ExecutionRecord) => {
       }
     )
     
-    ElMessage.info('重新执行功能开发中...')
+    // 后端使用 /executions/:id/retry
+    await ExecutionService.reExecute(execution.id)
+    ElMessage.success('已提交重试请求')
+    fetchExecutions()
   } catch (error) {
     // 用户取消操作
   }
@@ -536,6 +539,13 @@ onMounted(async () => {
     console.log('查看特定执行记录:', executionId)
   }
   
+  // 加载连接下拉
+  try {
+    connections.value = await ConnectionService.getConnections()
+  } catch (e) {
+    // 忽略
+  }
+
   await fetchExecutions()
 })
 </script>

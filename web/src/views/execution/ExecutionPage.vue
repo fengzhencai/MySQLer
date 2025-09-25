@@ -142,13 +142,13 @@
                   >
                     <el-option
                       v-for="table in tables"
-                      :key="table.TABLE_NAME || table"
-                      :label="table.TABLE_NAME || table"
-                      :value="table.TABLE_NAME || table"
+                      :key="table.table_name || table"
+                      :label="table.table_name || table"
+                      :value="table.table_name || table"
                     >
                       <div class="table-option">
-                        <span>{{ table.TABLE_NAME || table }}</span>
-                        <span class="table-comment">{{ table.TABLE_COMMENT || '无注释' }}</span>
+                        <span>{{ table.table_name || table }}</span>
+                        <span class="table-comment">{{ table.table_comment || '无注释' }}</span>
                       </div>
                     </el-option>
                   </el-select>
@@ -167,45 +167,50 @@
             </el-form-item>
 
             <!-- 执行参数 -->
-            <el-form-item label="执行参数">
+            <el-divider content-position="left"><span>执行参数</span></el-divider>
+            <el-form-item label-width="0" class="params-form">
               <el-row :gutter="16">
-                <el-col :span="6">
+                <el-col :span="12">
                   <el-form-item label="块大小" prop="chunk_size">
                     <el-input-number
                       v-model="formData.execution_params.chunk_size"
                       :min="100"
                       :max="10000"
                       placeholder="1000"
+                      controls-position="right"
                       style="width: 100%"
                     />
                   </el-form-item>
                 </el-col>
                 
-                <el-col :span="6">
+                <el-col :span="12">
                   <el-form-item label="最大负载">
                     <el-input
                       v-model="formData.execution_params.max_load"
                       placeholder="Threads_running=25"
+                      style="width: 100%"
                     />
                   </el-form-item>
                 </el-col>
                 
-                <el-col :span="6">
+                <el-col :span="12">
                   <el-form-item label="临界负载">
                     <el-input
                       v-model="formData.execution_params.critical_load"
                       placeholder="Threads_running=50"
+                      style="width: 100%"
                     />
                   </el-form-item>
                 </el-col>
                 
-                <el-col :span="6">
+                <el-col :span="12">
                   <el-form-item label="锁等待超时">
                     <el-input-number
                       v-model="formData.execution_params.lock_wait_timeout"
                       :min="1"
                       :max="300"
                       placeholder="60"
+                      controls-position="right"
                       style="width: 100%"
                     />
                   </el-form-item>
@@ -306,9 +311,9 @@ const formData = reactive<CreateExecutionRequest & { original_ddl: string }>({
   ddl_type: 'other',
   original_ddl: '',
   execution_params: {
-    chunk_size: 1000,
-    max_load: 'Threads_running=25',
-    critical_load: 'Threads_running=50',
+    chunk_size: 3000,
+    max_load: 'Threads_running=8000',
+    critical_load: 'Threads_running=10000',
     charset: 'utf8mb4',
     lock_wait_timeout: 60,
     other_params: ''
@@ -380,12 +385,15 @@ const handlePreview = async () => {
   
   try {
     await formRef.value.validate()
+    // 后端预览接口仅支持 fragment 与 custom，其它类型统一映射为 custom
+    const ddlTypeForPreview = formData.ddl_type === 'fragment' ? 'fragment' : 'custom'
     const res = await ExecutionService.previewCommand({
       connection_id: formData.connection_id,
       database_name: formData.database_name,
       table_name: formData.table_name,
-      ddl_type: formData.ddl_type,
-      original_ddl: formData.original_ddl
+      ddl_type: ddlTypeForPreview,
+      original_ddl: formData.original_ddl,
+      execution_params: formData.execution_params
     })
     previewResult.value = res
   } catch (error) {
@@ -425,9 +433,9 @@ const handleReset = () => {
     ddl_type: 'other',
     original_ddl: '',
     execution_params: {
-      chunk_size: 1000,
-      max_load: 'Threads_running=25',
-      critical_load: 'Threads_running=50',
+      chunk_size: 3000,
+      max_load: 'Threads_running=8000',
+      critical_load: 'Threads_running=10000',
       charset: 'utf8mb4',
       lock_wait_timeout: 60,
       other_params: ''
@@ -619,6 +627,26 @@ onMounted(async () => {
 .empty-tasks {
   padding: 20px;
   text-align: center;
+}
+
+/* 参数区交互与可读性优化 */
+.params-form :deep(.el-form-item) {
+  margin-bottom: 12px;
+}
+
+.params-form :deep(.el-input),
+.params-form :deep(.el-input__inner),
+.params-form :deep(.el-input-number),
+.params-form :deep(.el-input-number .el-input__inner) {
+  height: 36px;
+  line-height: 36px;
+  font-size: 14px;
+}
+
+@media (max-width: 1200px) {
+  .params-form :deep(.el-col-12) {
+    width: 100% !important;
+  }
 }
 
 /* 响应式设计 */

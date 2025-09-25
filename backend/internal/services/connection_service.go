@@ -29,16 +29,16 @@ func NewConnectionService(db *gorm.DB, cfg *config.Config) *ConnectionService {
 
 // CreateConnectionRequest 创建连接请求
 type CreateConnectionRequest struct {
-	Name           string             `json:"name" binding:"required"`
-	Environment    models.Environment `json:"environment"`
-	Host           string             `json:"host" binding:"required"`
-	Port           int                `json:"port"`
-	Username       string             `json:"username" binding:"required"`
-	Password       string             `json:"password" binding:"required"`
-	DatabaseName   string             `json:"database_name" binding:"required"`
-	Description    *string            `json:"description"`
-	ConnectTimeout int                `json:"connect_timeout"`
-	Charset        string             `json:"charset"`
+	Name           string             `json:"name" binding:"required,min=1,max=100"`
+	Environment    models.Environment `json:"environment" binding:"omitempty,oneof=prod test dev"`
+	Host           string             `json:"host" binding:"required,hostname_rfc1123|ip"`
+	Port           int                `json:"port" binding:"omitempty,min=1,max=65535"`
+	Username       string             `json:"username" binding:"required,min=1,max=100"`
+	Password       string             `json:"password" binding:"required,min=1,max=200"`
+	DatabaseName   string             `json:"database_name" binding:"required,min=1,max=100"`
+	Description    *string            `json:"description" binding:"omitempty,max=200"`
+	ConnectTimeout int                `json:"connect_timeout" binding:"omitempty,min=1,max=60"`
+	Charset        string             `json:"charset" binding:"omitempty,oneof=utf8 utf8mb4"`
 	UseSSL         bool               `json:"use_ssl"`
 }
 
@@ -301,6 +301,48 @@ func (s *ConnectionService) TestConnection(id string) (map[string]interface{}, e
 	return info, nil
 }
 
+// TestConnectionByParams 基于传入参数测试连接（不落库）
+func (s *ConnectionService) TestConnectionByParams(req *CreateConnectionRequest) (map[string]interface{}, error) {
+	// 1. 复用字段校验，确保必要参数完整
+	if err := s.validateCreateRequest(req); err != nil {
+		return nil, err
+	}
+
+	// 2. 构建连接配置
+	dbConn := &utils.DatabaseConnection{
+		Host:           req.Host,
+		Port:           req.Port,
+		Username:       req.Username,
+		Password:       req.Password,
+		DatabaseName:   req.DatabaseName,
+		ConnectTimeout: req.ConnectTimeout,
+		Charset:        req.Charset,
+		UseSSL:         req.UseSSL,
+	}
+
+	// 3. 测试连接
+	if err := utils.TestConnection(dbConn); err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		}, nil
+	}
+
+	// 4. 获取数据库信息
+	info, err := utils.GetDatabaseInfo(dbConn)
+	if err != nil {
+		return map[string]interface{}{
+			"success": true,
+			"message": "连接成功，但获取数据库信息失败",
+			"error":   err.Error(),
+		}, nil
+	}
+
+	info["success"] = true
+	info["message"] = "连接测试成功"
+	return info, nil
+}
+
 // GetDatabases 获取连接的数据库列表
 func (s *ConnectionService) GetDatabases(id string) ([]string, error) {
 	// 1. 获取连接信息
@@ -367,6 +409,40 @@ func (s *ConnectionService) GetTables(id string, database string) ([]map[string]
 
 	// 4. 获取表列表
 	return utils.GetTableList(dbConn, database)
+}
+
+// GetTableSchema 获取指定表的列与索引结构
+func (s *ConnectionService) GetTableSchema(id string, database string, table string) (map[string]interface{}, error) {
+	// 1. 获取连接信息
+	var connection models.Connection
+	err := s.db.First(&connection, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("连接不存在")
+		}
+		return nil, err
+	}
+
+	// 2. 解密密码
+	password, err := s.crypto.Decrypt(connection.Password)
+	if err != nil {
+		return nil, fmt.Errorf("密码解密失败: %v", err)
+	}
+
+	// 3. 构建连接配置
+	dbConn := &utils.DatabaseConnection{
+		Host:           connection.Host,
+		Port:           connection.Port,
+		Username:       connection.Username,
+		Password:       password,
+		DatabaseName:   database,
+		ConnectTimeout: connection.ConnectTimeout,
+		Charset:        connection.Charset,
+		UseSSL:         connection.UseSSL,
+	}
+
+	// 4. 获取表结构
+	return utils.GetTableSchema(dbConn, database, table)
 }
 
 // validateCreateRequest 验证创建请求

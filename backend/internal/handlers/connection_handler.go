@@ -169,6 +169,35 @@ func (h *ConnectionHandler) Test(c *gin.Context) {
 	})
 }
 
+// TestByParams 基于传入参数测试连接（创建/编辑表单使用）
+func (h *ConnectionHandler) TestByParams(c *gin.Context) {
+	var req services.CreateConnectionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": "Invalid request parameters",
+			"data":    nil,
+		})
+		return
+	}
+
+	result, err := h.connectionService.TestConnectionByParams(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": err.Error(),
+			"data":    nil,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "Success",
+		"data":    result,
+	})
+}
+
 // GetDatabases 获取连接的数据库列表
 func (h *ConnectionHandler) GetDatabases(c *gin.Context) {
 	id := c.Param("id")
@@ -209,5 +238,28 @@ func (h *ConnectionHandler) GetTables(c *gin.Context) {
 		"code":    200,
 		"message": "Success",
 		"data":    tables,
+	})
+}
+
+// GetTableSchema 获取指定表的列与索引结构
+func (h *ConnectionHandler) GetTableSchema(c *gin.Context) {
+	id := c.Param("id")
+	database := c.Param("database")
+	table := c.Param("table")
+
+	schema, err := h.connectionService.GetTableSchema(id, database, table)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": err.Error(),
+			"data":    nil,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    200,
+		"message": "Success",
+		"data":    schema,
 	})
 }

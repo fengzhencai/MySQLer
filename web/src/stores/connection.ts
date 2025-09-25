@@ -147,6 +147,23 @@ export const useConnectionStore = defineStore('connection', () => {
     }
   }
 
+  // 表单参数测试连接（不保存）
+  const testConnectionByParams = async (data: CreateConnectionRequest) => {
+    try {
+      const result = await ConnectionService.testConnectionByParams(data)
+      if (result.success) {
+        ElMessage.success('连接测试成功')
+      } else {
+        ElMessage.error(`连接测试失败: ${result.error || result.message || ''}`)
+      }
+      return result
+    } catch (error) {
+      console.error('连接测试失败:', error)
+      ElMessage.error('连接测试失败')
+      throw error
+    }
+  }
+
   const getDatabases = async (id: string) => {
     try {
       return await ConnectionService.getDatabases(id)
@@ -217,6 +234,7 @@ export const useConnectionStore = defineStore('connection', () => {
     testConnection,
     getDatabases,
     getTables,
+    testConnectionByParams,
     searchConnections,
     filterByEnvironment,
     resetState

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/fengzhencai/MySQLer/backend/internal/services"
 	"github.com/gin-gonic/gin"
@@ -25,9 +26,31 @@ func NewExecutionHandler(executionService *services.ExecutionService, executionE
 
 // List 获取执行记录列表
 func (h *ExecutionHandler) List(c *gin.Context) {
-	userID := c.GetString("user_id")
+	// 读取查询参数
+	page := 1
+	size := 20
+	if v := c.Query("page"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			page = n
+		}
+	}
+	if v := c.Query("size"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			size = n
+		}
+	}
 
-	records, err := h.executionService.List(userID)
+	params := map[string]interface{}{
+		"status":        c.Query("status"),
+		"connection_id": c.Query("connection_id"),
+		"start_date":    c.Query("start_date"),
+		"end_date":      c.Query("end_date"),
+		"keyword":       c.Query("keyword"),
+		"page":          page,
+		"size":          size,
+	}
+
+	records, total, err := h.executionService.ListWithFilters(params)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    500,
@@ -40,7 +63,10 @@ func (h *ExecutionHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    200,
 		"message": "Success",
-		"data":    records,
+		"data": gin.H{
+			"records": records,
+			"total":   total,
+		},
 	})
 }
 
@@ -60,9 +86,9 @@ func (h *ExecutionHandler) Create(c *gin.Context) {
 
 	record, err := h.executionService.Create(&req, userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"code":    500,
-			"message": "Failed to create execution",
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    400,
+			"message": err.Error(),
 			"data":    nil,
 		})
 		return
@@ -99,6 +125,11 @@ func (h *ExecutionHandler) GetByID(c *gin.Context) {
 // Stop 停止执行
 func (h *ExecutionHandler) Stop(c *gin.Context) {
 	id := c.Param("id")
+
+	// 先尝试通过引擎停止运行中的任务
+	if err := h.executionEngine.StopExecution(id); err != nil {
+		// 引擎未在运行或停止失败则继续走服务层兜底
+	}
 
 	err := h.executionService.Stop(id)
 	if err != nil {

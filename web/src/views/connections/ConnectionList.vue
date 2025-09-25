@@ -4,7 +4,7 @@
     <div class="page-header">
       <div class="header-left">
         <h1 class="page-title">
-          <el-icon class="title-icon"><Database /></el-icon>
+          <el-icon class="title-icon"><Collection /></el-icon>
           连接管理
         </h1>
         <p class="page-description">管理数据库连接配置，支持多环境切换</p>
@@ -157,7 +157,7 @@
           <el-table-column prop="name" label="连接名称" min-width="150">
             <template #default="{ row }">
               <div class="connection-name-cell">
-                <el-icon class="name-icon"><Database /></el-icon>
+                <el-icon class="name-icon"><Collection /></el-icon>
                 {{ row.name }}
               </div>
             </template>
@@ -234,7 +234,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Database,
+  Collection,
   Plus,
   Connection,
   Warning,
@@ -348,8 +348,11 @@ const handleFormSubmit = async (data: CreateConnectionRequest) => {
 }
 
 const handleFormTest = async (data: CreateConnectionRequest) => {
-  // TODO: 实现表单中的连接测试
-  ElMessage.info('连接测试功能开发中...')
+  try {
+    await connectionStore.testConnectionByParams(data)
+  } catch (e) {
+    // 错误提示已在store内处理
+  }
 }
 
 const handleDialogClose = () => {

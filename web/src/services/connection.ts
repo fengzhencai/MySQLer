@@ -39,6 +39,12 @@ export class ConnectionService {
     return response.data.data
   }
 
+  // 基于参数测试连接（用于创建/编辑表单）
+  static async testConnectionByParams(data: CreateConnectionRequest): Promise<ConnectionTestResult> {
+    const response = await api.post<ApiResponse<ConnectionTestResult>>('/connections/test', data)
+    return response.data.data
+  }
+
   // 获取数据库列表
   static async getDatabases(id: string): Promise<string[]> {
     const response = await api.get<ApiResponse<string[]>>(`/tools/connections/${id}/databases`)

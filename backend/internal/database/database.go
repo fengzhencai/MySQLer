@@ -54,6 +54,11 @@ func Initialize(cfg *config.Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to auto migrate: %w", err)
 	}
 
+	// 修复旧版本列名（target_table_name -> table_name）
+	if err := fixExecutionRecordsSchema(db, cfg.DBName); err != nil {
+		return nil, fmt.Errorf("failed to fix schema: %w", err)
+	}
+
 	return db, nil
 }
 
@@ -65,4 +70,40 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.ExecutionRecord{},
 		&models.AuditLog{},
 	)
+}
+
+// fixExecutionRecordsSchema 兼容旧列名，确保仅存在 table_name 列
+func fixExecutionRecordsSchema(db *gorm.DB, dbName string) error {
+	type cnt struct{ C int }
+	var a, b cnt
+	// 检查是否存在旧列 target_table_name
+	if err := db.Raw(
+		"SELECT COUNT(*) AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME='execution_records' AND COLUMN_NAME='target_table_name'",
+		dbName,
+	).Scan(&a).Error; err != nil {
+		return err
+	}
+	if a.C == 0 {
+		return nil
+	}
+	// 检查是否已存在新列 table_name
+	if err := db.Raw(
+		"SELECT COUNT(*) AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME='execution_records' AND COLUMN_NAME='table_name'",
+		dbName,
+	).Scan(&b).Error; err != nil {
+		return err
+	}
+
+	if b.C == 0 {
+		// 重命名旧列为新列
+		if err := db.Exec("ALTER TABLE execution_records CHANGE COLUMN target_table_name table_name varchar(200) NOT NULL").Error; err != nil {
+			return err
+		}
+	} else {
+		// 已有新列，直接删除旧列，避免 NOT NULL 约束导致插入失败
+		if err := db.Exec("ALTER TABLE execution_records DROP COLUMN target_table_name").Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -1,5 +1,5 @@
 import api from './api'
-import type { ExecutionRecord, CreateExecutionRequest } from '@/types/execution'
+import type { ExecutionRecord, CreateExecutionRequest, ExecutionParams } from '@/types/execution'
 import type { ApiResponse } from '@/types/auth'
 
 // 预览命令请求类型
@@ -9,6 +9,7 @@ export interface PreviewCommandRequest {
   database_name: string
   ddl_type?: string
   original_ddl?: string
+  execution_params?: ExecutionParams
 }
 
 // 预览命令响应类型
@@ -115,7 +116,7 @@ export class ExecutionService {
 
   // 重新执行
   static async reExecute(executionId: string): Promise<ExecutionRecord> {
-    const response = await api.post<ApiResponse<ExecutionRecord>>(`/executions/${executionId}/re-execute`)
+    const response = await api.post<ApiResponse<ExecutionRecord>>(`/executions/${executionId}/retry`)
     return response.data.data
   }
 

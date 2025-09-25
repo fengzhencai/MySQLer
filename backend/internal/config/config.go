@@ -63,8 +63,8 @@ func Load() *Config {
 
 		DBHost:     getEnv("DB_HOST", "localhost"),
 		DBPort:     getEnvAsInt("DB_PORT", 3307),
-		DBUser:     getEnv("DB_USER", "root"),
-		DBPassword: getEnv("DB_PASSWORD", "root123"),
+		DBUser:     getEnv("DB_USER", "mysqler"),
+		DBPassword: getEnv("DB_PASSWORD", "mysqler123"),
 		DBName:     getEnv("DB_NAME", "mysqler"),
 
 		RedisHost:     getEnv("REDIS_HOST", "localhost"),

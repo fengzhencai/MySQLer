@@ -4,6 +4,13 @@
 
 MySQLer 是一个基于Web的 pt-online-schema-change 工具管理平台，提供可视化界面来执行MySQL在线表结构变更，避免传统DDL操作的锁表风险。
 
+### 本期MVP架构目标（极简）
+
+- 仅提供后端REST接口（Go + Gin），用于触发/预览 `pt-online-schema-change`。
+- 通过宿主 `/var/run/docker.sock` 启动带 percona-toolkit 的临时容器执行命令，回传标准输出/错误与退出码。
+- 不接入应用自有 MySQL/Redis；不做历史持久化；不做 WebSocket 实时；不做用户/权限。
+- Compose 可选，仅包含后端服务与 docker.sock 只读挂载。
+
 ## 2. 技术选型
 
 ### 2.1 后端技术栈

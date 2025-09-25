@@ -67,9 +67,9 @@ func NewPTCommandBuilder(conn *DatabaseConnection, table *TableInfo) *PTCommandB
 // getDefaultPTOptions 获取默认PT选项
 func getDefaultPTOptions() *PTOptions {
 	return &PTOptions{
-		ChunkSize:     1000,
-		MaxLoad:       "Threads_running=25",
-		CriticalLoad:  "Threads_running=50",
+        ChunkSize:     3000,
+        MaxLoad:       "Threads_running=8000",
+        CriticalLoad:  "Threads_running=10000",
 		CheckInterval: 1,
 		MaxLag:        1,
 		Charset:       "utf8mb4",
@@ -135,7 +135,10 @@ func (b *PTCommandBuilder) buildCommand() (string, error) {
 
 	// ALTER语句
 	if b.AlterStatement != "" {
-		parts = append(parts, fmt.Sprintf("--alter=\"%s\"", b.AlterStatement))
+		// 使用单引号包裹，避免 shell 将反引号 `...` 作为命令替换执行
+		// 同时转义内部的单引号：' -> '\''
+		escaped := strings.ReplaceAll(b.AlterStatement, "'", "'\\''")
+		parts = append(parts, fmt.Sprintf("--alter='%s'", escaped))
 	}
 
 	// PT选项

@@ -47,7 +47,7 @@ type ExecutionParams struct {
 type ExecutionRecord struct {
 	ID               string           `json:"id" gorm:"type:varchar(36);primaryKey"`
 	ConnectionID     string           `json:"connection_id" gorm:"type:varchar(36);not null;index"`
-	TargetTableName  string           `json:"table_name" gorm:"type:varchar(200);not null"`
+	TargetTableName  string           `json:"table_name" gorm:"column:table_name;type:varchar(200);not null"`
 	DatabaseName     string           `json:"database_name" gorm:"type:varchar(100);not null;index:idx_table"`
 	DDLType          *DDLType         `json:"ddl_type" gorm:"type:enum('fragment','add_column','modify_column','drop_column','add_index','drop_index','other')"`
 	OriginalDDL      *string          `json:"original_ddl" gorm:"type:text"`

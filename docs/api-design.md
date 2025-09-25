@@ -223,6 +223,42 @@ Authorization: Bearer {token}
 }
 ```
 
+### 3.5.1 按参数测试连接（不落库）
+```http
+POST /api/v1/connections/test
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+    "name": "E2E-连接测试",           // 可选，后端不使用，仅复用验证规则
+    "environment": "dev",            // 可选
+    "host": "localhost",
+    "port": 3307,
+    "username": "root",
+    "password": "root123456",
+    "database_name": "test_db",
+    "connect_timeout": 5,
+    "charset": "utf8mb4",
+    "use_ssl": false
+}
+```
+
+响应示例：
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "success": true,
+    "message": "连接测试成功",
+    "version": "8.0.36",
+    "database": "test_db",
+    "charset": "utf8mb4",
+    "server_time": "2025-09-25 12:00:00"
+  }
+}
+```
+
 ### 3.6 获取数据库列表
 ```http
 GET /api/v1/connections/{id}/databases
@@ -366,7 +402,29 @@ Authorization: Bearer {token}
 
 ## 5. 工具辅助API
 
-### 5.1 DDL语句解析
+### 5.1 获取表结构
+```http
+GET /api/v1/tools/connections/{id}/databases/{database}/tables/{table}/schema
+Authorization: Bearer {token}
+```
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "columns": [
+      { "column_name": "id", "column_type": "bigint(20)", "is_nullable": "NO", "column_key": "PRI", "extra": "auto_increment", "column_comment": "主键" }
+    ],
+    "indexes": [
+      { "index_name": "PRIMARY", "non_unique": 0, "column_name": "id", "seq_in_index": 1 }
+    ]
+  }
+}
+```
+
+### 5.2 DDL语句解析
 ```http
 POST /api/v1/tools/ddl/parse
 Authorization: Bearer {token}
@@ -444,7 +502,7 @@ Content-Type: application/json
 
 ### 5.3 获取表结构信息
 ```http
-GET /api/v1/tools/tables/{connection_id}/{database}/{table}/schema
+GET /api/v1/tools/connections/{id}/databases/{database}/tables/{table}/schema
 Authorization: Bearer {token}
 ```
 
@@ -676,3 +734,78 @@ logger.WithFields(logrus.Fields{
 **文档版本**: v1.0  
 **创建时间**: 2024-01-15  
 **维护人员**: 后端开发团队
+
+---
+
+## 11. MVP最小接口
+
+本期仅提供最小可用的两类接口：预览命令与实际执行。无认证、无历史、无WebSocket。
+
+### 11.1 预览命令（不执行）
+```http
+POST /api/v1/mvp/preview
+Content-Type: application/json
+
+{
+  "host": "db.example.com",
+  "port": 3306,
+  "username": "user",
+  "password": "pass",
+  "database": "test_db",
+  "table": "users",
+  "ddl_statement": "ADD COLUMN phone VARCHAR(20) NULL COMMENT '手机号' AFTER email",
+  "params": {
+    "chunk_size": 8000,
+    "dry_run": true
+  }
+}
+```
+
+响应：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "generated_command": "pt-online-schema-change --user=*** --password=*** --host=db.example.com --alter \"ADD COLUMN phone VARCHAR(20) NULL COMMENT '手机号' AFTER email\" D=test_db,t=users --chunk-size=8000 --dry-run --print"
+  }
+}
+```
+
+### 11.2 执行命令（容器内执行）
+```http
+POST /api/v1/mvp/execute
+Content-Type: application/json
+
+{
+  "host": "db.example.com",
+  "port": 3306,
+  "username": "user",
+  "password": "pass",
+  "database": "test_db",
+  "table": "users",
+  "ddl_statement": "ADD COLUMN phone VARCHAR(20) NULL COMMENT '手机号' AFTER email",
+  "params": {
+    "chunk_size": 8000,
+    "dry_run": false
+  }
+}
+```
+
+响应：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "generated_command": "pt-online-schema-change ...",
+    "exit_code": 0,
+    "stdout": "Copied 1000/1000 rows (100%) ...",
+    "stderr": ""
+  }
+}
+```
+
+说明：
+- `dry_run` 为 true 时，实际也在容器内执行但不对生产数据做变更，由 pt 工具负责。
+- 本期不保存执行历史，仅返回本次结果；密码仅用于本次执行流程内存中。

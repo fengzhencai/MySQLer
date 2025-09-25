@@ -20,6 +20,15 @@ func RegisterRoutes(router *gin.Engine, services *services.Services, cfg *config
 		authGroup.POST("/logout", authHandler.Logout)
 	}
 
+	// MVP最小接口（无鉴权）
+	mvp := v1.Group("/mvp")
+	{
+		mvph := NewMVPHandler(services.MVP)
+		mvp.GET("/ping", func(c *gin.Context) { c.JSON(200, gin.H{"pong": true}) })
+		mvp.POST("/preview", mvph.Preview)
+		mvp.POST("/execute", mvph.Execute)
+	}
+
 	// 需要认证的路由
 	authenticated := v1.Group("")
 	authenticated.Use(middleware.AuthMiddleware(cfg))
@@ -37,6 +46,8 @@ func RegisterRoutes(router *gin.Engine, services *services.Services, cfg *config
 			connectionGroup.PUT("/:id", connectionHandler.Update)
 			connectionGroup.DELETE("/:id", connectionHandler.Delete)
 			connectionGroup.POST("/:id/test", connectionHandler.Test)
+			// 基于参数的测试连接（不依赖已保存的连接）
+			connectionGroup.POST("/test", connectionHandler.TestByParams)
 		}
 
 		// DDL执行
@@ -60,6 +71,7 @@ func RegisterRoutes(router *gin.Engine, services *services.Services, cfg *config
 		{
 			toolsGroup.GET("/connections/:id/databases", connectionHandler.GetDatabases)
 			toolsGroup.GET("/connections/:id/databases/:database/tables", connectionHandler.GetTables)
+			toolsGroup.GET("/connections/:id/databases/:database/tables/:table/schema", connectionHandler.GetTableSchema)
 		}
 
 		// 管理员路由

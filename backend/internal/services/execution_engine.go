@@ -26,6 +26,10 @@ type ExecutionEngine struct {
 	maxConcurrent int
 	mutex         sync.RWMutex
 
+	// 新增：任务队列与worker
+	queue       chan string
+	workerGroup sync.WaitGroup
+
 	// 上下文管理
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -70,8 +74,15 @@ func NewExecutionEngine(db *gorm.DB, cfg *config.Config) (*ExecutionEngine, erro
 		crypto:        utils.NewCryptoService(cfg.EncryptionKey),
 		runningTasks:  make(map[string]*ExecutionTask),
 		maxConcurrent: 10, // 最大并发执行数
+		queue:         make(chan string, 100),
 		ctx:           ctx,
 		cancel:        cancel,
+	}
+
+	// 启动固定数量的worker
+	for i := 0; i < engine.maxConcurrent; i++ {
+		engine.workerGroup.Add(1)
+		go engine.worker()
 	}
 
 	return engine, nil
@@ -83,63 +94,15 @@ func (e *ExecutionEngine) SetBroadcasters(logBroadcaster func(string, string), p
 	e.progressBroadcaster = progressBroadcaster
 }
 
-// StartExecution 开始执行任务
+// StartExecution 将任务加入队列
 func (e *ExecutionEngine) StartExecution(recordID string, logCallback func(string)) error {
-	e.mutex.Lock()
-	defer e.mutex.Unlock()
-
-	// 检查并发限制
-	if len(e.runningTasks) >= e.maxConcurrent {
-		return fmt.Errorf("已达到最大并发执行数限制: %d", e.maxConcurrent)
+	select {
+	case e.queue <- recordID:
+		_ = logCallback // 如需回调映射可扩展
+		return nil
+	default:
+		return fmt.Errorf("执行队列已满，请稍后重试")
 	}
-
-	// 检查任务是否已在运行
-	if _, exists := e.runningTasks[recordID]; exists {
-		return fmt.Errorf("任务已在执行中")
-	}
-
-	// 获取执行记录
-	var record models.ExecutionRecord
-	err := e.db.Preload("Connection").First(&record, "id = ?", recordID).Error
-	if err != nil {
-		return fmt.Errorf("获取执行记录失败: %v", err)
-	}
-
-	// 检查记录状态
-	if record.Status != models.StatusPending {
-		return fmt.Errorf("只能执行状态为pending的记录")
-	}
-
-	// 创建执行任务
-	taskCtx, taskCancel := context.WithCancel(e.ctx)
-	task := &ExecutionTask{
-		ID:           recordID,
-		Record:       &record,
-		Context:      taskCtx,
-		Cancel:       taskCancel,
-		StartTime:    time.Now(),
-		LogCallback:  logCallback,
-		Status:       models.StatusRunning,
-		CurrentStage: "准备执行",
-	}
-
-	// 添加到运行任务列表
-	e.runningTasks[recordID] = task
-
-	// 更新数据库状态
-	now := time.Now()
-	record.Status = models.StatusRunning
-	record.StartTime = &now
-	if err := e.db.Save(&record).Error; err != nil {
-		delete(e.runningTasks, recordID)
-		taskCancel()
-		return fmt.Errorf("更新执行状态失败: %v", err)
-	}
-
-	// 异步执行任务
-	go e.executeTask(task)
-
-	return nil
 }
 
 // StopExecution 停止执行任务
@@ -234,6 +197,69 @@ func (e *ExecutionEngine) GetRunningTasks() []*ExecutionTask {
 	return tasks
 }
 
+// worker 从队列取任务并执行
+func (e *ExecutionEngine) worker() {
+	defer e.workerGroup.Done()
+	for {
+		select {
+		case <-e.ctx.Done():
+			return
+		case recordID, ok := <-e.queue:
+			if !ok {
+				return
+			}
+
+			// 已在运行则跳过
+			e.mutex.RLock()
+			_, exists := e.runningTasks[recordID]
+			e.mutex.RUnlock()
+			if exists {
+				continue
+			}
+
+			// 加载记录
+			var record models.ExecutionRecord
+			if err := e.db.Preload("Connection").First(&record, "id = ?", recordID).Error; err != nil {
+				continue
+			}
+			if record.Status != models.StatusPending {
+				continue
+			}
+
+			taskCtx, taskCancel := context.WithCancel(e.ctx)
+			task := &ExecutionTask{
+				ID:           recordID,
+				Record:       &record,
+				Context:      taskCtx,
+				Cancel:       taskCancel,
+				StartTime:    time.Now(),
+				Status:       models.StatusRunning,
+				CurrentStage: "准备执行",
+			}
+
+			// 注册运行任务
+			e.mutex.Lock()
+			e.runningTasks[recordID] = task
+			e.mutex.Unlock()
+
+			// 更新DB状态
+			now := time.Now()
+			record.Status = models.StatusRunning
+			record.StartTime = &now
+			if err := e.db.Save(&record).Error; err != nil {
+				e.mutex.Lock()
+				delete(e.runningTasks, recordID)
+				e.mutex.Unlock()
+				taskCancel()
+				continue
+			}
+
+			// 执行
+			e.executeTask(task)
+		}
+	}
+}
+
 // executeTask 执行单个任务
 func (e *ExecutionEngine) executeTask(task *ExecutionTask) {
 	defer func() {
@@ -291,8 +317,20 @@ func (e *ExecutionEngine) executeTask(task *ExecutionTask) {
 	// 步骤2: 创建Docker容器
 	e.updateStage(task, "创建执行容器")
 
+	// 处理容器内访问宿主机 MySQL：将 localhost/127.0.0.1 替换为 host.docker.internal
+	cmd := task.Record.GeneratedCommand
+	if h := strings.ToLower(task.Record.Connection.Host); h == "localhost" || h == "127.0.0.1" {
+		cmd = strings.Replace(cmd, fmt.Sprintf("--host=%s", task.Record.Connection.Host), "--host=host.docker.internal", 1)
+	}
+
+	// 将命令中的明文密码替换为环境变量，避免特殊字符导致的解析问题
+	if password != "" {
+		needle := fmt.Sprintf("--password=%s", password)
+		cmd = strings.ReplaceAll(cmd, needle, "--password=$MYSQL_PWD")
+	}
+
 	containerConfig := &utils.PTContainerConfig{
-		Command:     task.Record.GeneratedCommand,
+		Command:     cmd,
 		CPULimit:    2.0,
 		MemoryLimit: 2 * 1024 * 1024 * 1024, // 2GB
 		NetworkMode: "bridge",
@@ -475,6 +513,8 @@ func (e *ExecutionEngine) Shutdown() error {
 			e.mutex.RUnlock()
 
 			if count == 0 {
+				close(e.queue)
+				e.workerGroup.Wait()
 				return e.dockerService.Close()
 			}
 		}

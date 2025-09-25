@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/fengzhencai/MySQLer/backend/internal/config"
 	"github.com/fengzhencai/MySQLer/backend/internal/models"
@@ -31,21 +32,21 @@ func NewExecutionService(db *gorm.DB, cfg *config.Config, connectionService *Con
 
 // CreateExecutionRequest 创建执行请求
 type CreateExecutionRequest struct {
-	ConnectionID    string                  `json:"connection_id" binding:"required"`
-	TableName       string                  `json:"table_name" binding:"required"`
-	DatabaseName    string                  `json:"database_name" binding:"required"`
-	DDLType         *models.DDLType         `json:"ddl_type"`
-	OriginalDDL     *string                 `json:"original_ddl"`
+	ConnectionID    string                  `json:"connection_id" binding:"required,uuid4"`
+	TableName       string                  `json:"table_name" binding:"required,min=1,max=200"`
+	DatabaseName    string                  `json:"database_name" binding:"required,min=1,max=100"`
+	DDLType         *models.DDLType         `json:"ddl_type" binding:"required"`
+	OriginalDDL     *string                 `json:"original_ddl" binding:"omitempty,max=2000"`
 	ExecutionParams *models.ExecutionParams `json:"execution_params"`
 }
 
 // PreviewCommandRequest 预览命令请求
 type PreviewCommandRequest struct {
-	ConnectionID    string                  `json:"connection_id" binding:"required"`
-	TableName       string                  `json:"table_name" binding:"required"`
-	DatabaseName    string                  `json:"database_name" binding:"required"`
-	DDLType         string                  `json:"ddl_type" binding:"required"` // fragment 或 custom
-	OriginalDDL     *string                 `json:"original_ddl"`                // 自定义DDL时需要
+	ConnectionID    string                  `json:"connection_id" binding:"required,uuid4"`
+	TableName       string                  `json:"table_name" binding:"required,min=1,max=200"`
+	DatabaseName    string                  `json:"database_name" binding:"required,min=1,max=100"`
+	DDLType         string                  `json:"ddl_type" binding:"required,oneof=fragment custom"` // fragment 或 custom
+	OriginalDDL     *string                 `json:"original_ddl" binding:"omitempty,max=2000"`         // 自定义DDL时需要
 	ExecutionParams *models.ExecutionParams `json:"execution_params"`
 }
 
@@ -58,11 +59,53 @@ type PreviewCommandResponse struct {
 	RecommendedChunkSize int                    `json:"recommended_chunk_size"`
 }
 
-// List 获取执行记录列表
-func (s *ExecutionService) List(userID string) ([]models.ExecutionRecord, error) {
-	var records []models.ExecutionRecord
-	err := s.db.Preload("Connection").Find(&records).Error
-	return records, err
+// List 获取执行记录列表（分页与过滤）
+func (s *ExecutionService) List(userID string) (interface{}, error) {
+	// 读取过滤参数将由handler负责，这里只保留查询逻辑的可复用函数
+	// 为了兼容现有handler签名，这里返回interface{}，由调用方传入范围
+	return nil, fmt.Errorf("请使用带筛选参数的ListWithFilters方法")
+}
+
+// ListWithFilters 获取执行记录列表，支持分页与过滤
+func (s *ExecutionService) ListWithFilters(params map[string]interface{}) (records []models.ExecutionRecord, total int64, err error) {
+	db := s.db.Model(&models.ExecutionRecord{}).Preload("Connection")
+
+	// 过滤条件
+	if v, ok := params["status"].(string); ok && v != "" {
+		db = db.Where("status = ?", v)
+	}
+	if v, ok := params["connection_id"].(string); ok && v != "" {
+		db = db.Where("connection_id = ?", v)
+	}
+	if v, ok := params["start_date"].(string); ok && v != "" {
+		db = db.Where("created_at >= ?", v)
+	}
+	if v, ok := params["end_date"].(string); ok && v != "" {
+		db = db.Where("created_at <= ?", v)
+	}
+	if v, ok := params["keyword"].(string); ok && v != "" {
+		like := "%" + v + "%"
+		db = db.Where("id LIKE ? OR database_name LIKE ? OR target_table_name LIKE ?", like, like, like)
+	}
+
+	// 总数
+	if err = db.Count(&total).Error; err != nil {
+		return
+	}
+
+	// 分页
+	page := 1
+	size := 20
+	if v, ok := params["page"].(int); ok && v > 0 {
+		page = v
+	}
+	if v, ok := params["size"].(int); ok && v > 0 && v <= 200 {
+		size = v
+	}
+	offset := (page - 1) * size
+
+	err = db.Order("created_at DESC").Limit(size).Offset(offset).Find(&records).Error
+	return
 }
 
 // PreviewCommand 预览pt命令
@@ -141,6 +184,10 @@ func (s *ExecutionService) PreviewCommand(req *PreviewCommandRequest) (*PreviewC
 			Statistics:   true,
 			DropOldTable: true,
 		}
+		// 将锁等待超时映射到 --set-vars
+		if req.ExecutionParams.LockWaitTimeout > 0 {
+			ptOptions.SetVars = fmt.Sprintf("lock_wait_timeout=%d", req.ExecutionParams.LockWaitTimeout)
+		}
 		builder.SetOptions(ptOptions)
 	}
 
@@ -174,7 +221,7 @@ func (s *ExecutionService) PreviewCommand(req *PreviewCommandRequest) (*PreviewC
 	if err != nil {
 		return nil, fmt.Errorf("生成预览命令失败: %v", err)
 	}
-	
+
 	// 在这里使用command变量进行一些逻辑检查
 	if command == "" {
 		return nil, fmt.Errorf("生成的命令为空")
@@ -268,6 +315,9 @@ func (s *ExecutionService) Create(req *CreateExecutionRequest, userID string) (*
 			Statistics:   true,
 			DropOldTable: true,
 		}
+		if req.ExecutionParams.LockWaitTimeout > 0 {
+			ptOptions.SetVars = fmt.Sprintf("lock_wait_timeout=%d", req.ExecutionParams.LockWaitTimeout)
+		}
 		builder.SetOptions(ptOptions)
 	}
 
@@ -334,14 +384,39 @@ func (s *ExecutionService) GetByID(id string) (*models.ExecutionRecord, error) {
 
 // Stop 停止执行
 func (s *ExecutionService) Stop(id string) error {
-	// TODO: 实现停止执行逻辑
-	return nil
+	// 调用执行引擎停止任务需通过引擎，服务层更新状态作为兜底
+	// 这里仅更新记录状态为cancelled（如果仍处于running）
+	var record models.ExecutionRecord
+	if err := s.db.First(&record, "id = ?", id).Error; err != nil {
+		return err
+	}
+	if record.Status == models.StatusRunning {
+		now := time.Now()
+		record.Status = models.StatusCancelled
+		record.EndTime = &now
+		duration := int(now.Sub(*record.StartTime).Seconds())
+		record.DurationSeconds = &duration
+		return s.db.Save(&record).Error
+	}
+	return fmt.Errorf("当前状态无法停止: %s", record.Status)
 }
 
 // Retry 重试执行
 func (s *ExecutionService) Retry(id string, userID string) error {
-	// TODO: 实现重试执行逻辑
-	return nil
+	// 将记录状态重置为pending，并清理运行态字段
+	var record models.ExecutionRecord
+	if err := s.db.First(&record, "id = ?", id).Error; err != nil {
+		return err
+	}
+	if record.Status != models.StatusFailed && record.Status != models.StatusCancelled {
+		return fmt.Errorf("仅失败或已取消的任务允许重试")
+	}
+	record.Status = models.StatusPending
+	record.StartTime = nil
+	record.EndTime = nil
+	record.DurationSeconds = nil
+	record.ErrorMessage = nil
+	return s.db.Save(&record).Error
 }
 
 // GetLogs 获取执行日志

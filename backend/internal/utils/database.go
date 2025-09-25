@@ -201,6 +201,115 @@ func GetTableList(conn *DatabaseConnection, database string) ([]map[string]inter
 	return tables, nil
 }
 
+// GetTableSchema 获取指定表的列与索引结构
+func GetTableSchema(conn *DatabaseConnection, database string, table string) (map[string]interface{}, error) {
+	dsn := buildDSN(conn)
+
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("创建数据库连接失败: %v", err)
+	}
+	defer db.Close()
+
+	ctx, cancel := createTimeoutContext(conn.ConnectTimeout)
+	defer cancel()
+
+	// 列信息
+	colQuery := `
+        SELECT 
+            column_name,
+            ordinal_position,
+            column_type,
+            is_nullable,
+            column_default,
+            column_key,
+            extra,
+            column_comment
+        FROM information_schema.columns
+        WHERE table_schema = ? AND table_name = ?
+        ORDER BY ordinal_position
+    `
+
+	colRows, err := db.QueryContext(ctx, colQuery, database, table)
+	if err != nil {
+		return nil, fmt.Errorf("查询列信息失败: %v", err)
+	}
+	defer colRows.Close()
+
+	var columns []map[string]interface{}
+	for colRows.Next() {
+		var (
+			columnName    sql.NullString
+			ordinal       sql.NullInt64
+			columnType    sql.NullString
+			isNullable    sql.NullString
+			columnDefault sql.NullString
+			columnKey     sql.NullString
+			extra         sql.NullString
+			columnComment sql.NullString
+		)
+
+		if err := colRows.Scan(&columnName, &ordinal, &columnType, &isNullable, &columnDefault, &columnKey, &extra, &columnComment); err != nil {
+			continue
+		}
+
+		columns = append(columns, map[string]interface{}{
+			"column_name":      columnName.String,
+			"ordinal_position": ordinal.Int64,
+			"column_type":      columnType.String,
+			"is_nullable":      isNullable.String,
+			"column_default":   columnDefault.String,
+			"column_key":       columnKey.String,
+			"extra":            extra.String,
+			"column_comment":   columnComment.String,
+		})
+	}
+
+	// 索引信息
+	idxQuery := `
+        SELECT 
+            index_name,
+            non_unique,
+            column_name,
+            seq_in_index
+        FROM information_schema.statistics
+        WHERE table_schema = ? AND table_name = ?
+        ORDER BY index_name, seq_in_index
+    `
+
+	idxRows, err := db.QueryContext(ctx, idxQuery, database, table)
+	if err != nil {
+		return nil, fmt.Errorf("查询索引信息失败: %v", err)
+	}
+	defer idxRows.Close()
+
+	var indexes []map[string]interface{}
+	for idxRows.Next() {
+		var (
+			indexName  sql.NullString
+			nonUnique  sql.NullInt64
+			columnName sql.NullString
+			seqInIndex sql.NullInt64
+		)
+
+		if err := idxRows.Scan(&indexName, &nonUnique, &columnName, &seqInIndex); err != nil {
+			continue
+		}
+
+		indexes = append(indexes, map[string]interface{}{
+			"index_name":   indexName.String,
+			"non_unique":   nonUnique.Int64,
+			"column_name":  columnName.String,
+			"seq_in_index": seqInIndex.Int64,
+		})
+	}
+
+	return map[string]interface{}{
+		"columns": columns,
+		"indexes": indexes,
+	}, nil
+}
+
 // buildDSN 构建MySQL DSN
 func buildDSN(conn *DatabaseConnection) string {
 	config := mysql.Config{

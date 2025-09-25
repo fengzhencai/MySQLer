@@ -6,7 +6,7 @@
         <div class="connection-info">
           <div class="connection-name">
             <el-icon class="name-icon">
-              <Database />
+              <Collection />
             </el-icon>
             {{ connection.name }}
           </div>
@@ -130,7 +130,7 @@
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Database,
+  Collection,
   Connection,
   MoreFilled,
   Edit,
