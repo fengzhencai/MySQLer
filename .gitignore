@@ -51,6 +51,7 @@ docker-data/
 # Playwright / Test artifacts
 playwright-report/
 test-results/
+.playwright-mcp/
 
 # Binaries for programs and plugins
 *.exe
