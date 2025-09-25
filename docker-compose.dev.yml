@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # MySQL 8.0 数据库
+  mysql:
+    image: mysql:8.0
+    container_name: mysqler-mysql-dev
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: mysqler
+      MYSQL_USER: mysqler
+      MYSQL_PASSWORD: mysqler123
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_dev_data:/var/lib/mysql
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    restart: unless-stopped
+    networks:
+      - mysqler-network
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: mysqler-redis-dev
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_dev_data:/data
+    restart: unless-stopped
+    networks:
+      - mysqler-network
+
+  # phpMyAdmin (开发环境数据库管理工具)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: mysqler-phpmyadmin-dev
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: root123456
+    ports:
+      - "8081:80"
+    depends_on:
+      - mysql
+    networks:
+      - mysqler-network
+
+  # Redis Commander (开发环境Redis管理工具)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: mysqler-redis-commander-dev
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8082:8081"
+    depends_on:
+      - redis
+    networks:
+      - mysqler-network
+
+volumes:
+  mysql_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+
+networks:
+  mysqler-network:
+    driver: bridge

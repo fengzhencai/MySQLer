@@ -1,0 +1,17 @@
+{
+  "name": "mysqler-playwright-mcp",
+  "version": "1.0.0",
+  "description": "Playwright MCP server for MySQLer project",
+  "main": "playwright-mcp-server.js",
+  "scripts": {
+    "mcp-server": "node playwright-mcp-server.js"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0",
+    "@playwright/test": "^1.48.0"
+  },
+  "devDependencies": {},
+  "keywords": ["playwright", "mcp", "automation"],
+  "author": "",
+  "license": "MIT"
+}

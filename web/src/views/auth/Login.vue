@@ -2,7 +2,7 @@
   <div class="login-container">
     <div class="login-card">
       <div class="login-header">
-        <img src="/logo.png" alt="MySQLer" class="logo" />
+        <img src="/logo.svg" alt="MySQLer" class="logo" />
         <h1>MySQLer</h1>
         <p>PT-Online-Schema-Change Web管理平台</p>
       </div>
@@ -49,7 +49,7 @@
       </el-form>
       
       <div class="login-footer">
-        <p>默认管理员账号：admin / admin123</p>
+        <p>默认管理员账号：admin / password</p>
       </div>
     </div>
   </div>
@@ -110,7 +110,7 @@ onMounted(() => {
   // 开发环境自动填充表单
   if (import.meta.env.DEV) {
     loginForm.value.username = 'admin'
-    loginForm.value.password = 'admin123'
+    loginForm.value.password = 'password'
   }
 })
 </script>

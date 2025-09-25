@@ -3,7 +3,7 @@
     <!-- 侧边栏 -->
     <el-aside :width="isCollapse ? '64px' : '250px'" class="sidebar">
       <div class="sidebar-header">
-        <img src="/logo.png" alt="MySQLer" class="logo" />
+        <img src="/logo.svg" alt="MySQLer" class="logo" />
         <span v-if="!isCollapse" class="title">MySQLer</span>
       </div>
       
@@ -15,7 +15,7 @@
         class="sidebar-menu"
       >
         <el-menu-item index="/">
-          <el-icon><Dashboard /></el-icon>
+          <el-icon><DataAnalysis /></el-icon>
           <template #title>仪表板</template>
         </el-menu-item>
         
@@ -91,7 +91,6 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import {
-  Dashboard,
   Connection,
   Operation,
   Document,
@@ -99,7 +98,8 @@ import {
   Fold,
   Expand,
   UserFilled,
-  ArrowDown
+  ArrowDown,
+  DataAnalysis
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 

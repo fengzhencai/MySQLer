@@ -1,12 +1,13 @@
+// @ts-nocheck
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { resolve } from 'path'
+import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   server: {
@@ -14,14 +15,11 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8090',
         changeOrigin: true,
-      },
-      '/ws': {
-        target: 'ws://localhost:8080',
         ws: true,
-        changeOrigin: true,
       },
+      // 去除独立 /ws 代理，统一走 /api 代理
     },
   },
   build: {
