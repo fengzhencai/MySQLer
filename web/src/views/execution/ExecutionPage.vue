@@ -215,6 +215,16 @@
                     />
                   </el-form-item>
                 </el-col>
+
+                <el-col :span="12">
+                  <el-form-item label="跳过ALTER检查">
+                    <el-switch
+                      v-model="formData.execution_params.no_check_alter"
+                      :active-text="'--no-check-alter'"
+                      :inactive-text="'默认检查'"
+                    />
+                  </el-form-item>
+                </el-col>
               </el-row>
             </el-form-item>
 
@@ -245,24 +255,25 @@
               <span>命令预览</span>
             </el-divider>
             <pre style="background:#f7f7f7;padding:12px;border-radius:6px;white-space:pre-wrap">{{ previewResult.command }}</pre>
+            <div style="margin-top:8px;color:#909399;font-size:12px">
+              <span v-if="formData.execution_params.no_check_alter">已启用 --no-check-alter</span>
+              <span v-else>未启用 --no-check-alter</span>
+            </div>
           </div>
         </el-card>
       </el-col>
 
-      <!-- 右侧：运行中任务监控 -->
+      <!-- 右侧：执行日志（仅显示日志，不展示前端“监控任务”概念） -->
       <el-col :span="8">
         <el-card class="running-tasks-card">
           <template #header>
             <div class="card-header">
-              <h3>运行中任务</h3>
-              <el-badge :value="0" :hidden="true">
-                <el-icon><Loading /></el-icon>
-              </el-badge>
+              <h3>执行日志</h3>
             </div>
           </template>
 
           <div v-if="!currentExecutionId" class="empty-tasks">
-            <el-empty description="暂无运行中的任务" :image-size="80" />
+            <el-empty description="暂无日志可展示" :image-size="80" />
           </div>
           <div v-else>
             <ExecutionMonitor :execution-id="currentExecutionId" />
@@ -316,7 +327,8 @@ const formData = reactive<CreateExecutionRequest & { original_ddl: string }>({
     critical_load: 'Threads_running=10000',
     charset: 'utf8mb4',
     lock_wait_timeout: 60,
-    other_params: ''
+    other_params: '',
+    no_check_alter: false
   }
 })
 

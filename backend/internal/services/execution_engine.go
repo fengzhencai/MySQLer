@@ -302,6 +302,27 @@ func (e *ExecutionEngine) executeTask(task *ExecutionTask) {
 
 		// 保存最终状态
 		e.db.Save(task.Record)
+
+		// 广播最终状态与结果
+		if e.progressBroadcaster != nil {
+			progressData := map[string]interface{}{
+				"execution_id":  task.ID,
+				"status":        string(task.Status),
+				"progress":      task.Progress,
+				"current_speed": task.Speed,
+				"current_stage": task.CurrentStage,
+				"timestamp":     time.Now().Format("2006-01-02 15:04:05"),
+			}
+			e.progressBroadcaster(task.ID, progressData)
+		}
+
+		if e.logBroadcaster != nil {
+			finalLine := "执行完成"
+			if err != nil {
+				finalLine = fmt.Sprintf("执行失败: %v", err)
+			}
+			e.logBroadcaster(task.ID, finalLine)
+		}
 	}()
 
 	// 步骤1: 准备执行环境
@@ -361,7 +382,8 @@ func (e *ExecutionEngine) executeTask(task *ExecutionTask) {
 	// 步骤4: 监控执行进度
 	e.updateStage(task, "正在执行DDL操作")
 
-	// 启动日志监控
+	// 启动日志监控（本次执行开始前清空旧日志缓存）
+	task.Record.ExecutionLogs = nil
 	go e.monitorContainerLogs(task)
 
 	// 等待容器完成
@@ -371,15 +393,22 @@ func (e *ExecutionEngine) executeTask(task *ExecutionTask) {
 		return
 	}
 
+	// 合并并保存执行日志（stdout/stderr）
+	combinedLogs := result.Output
+	if result.Error != "" {
+		if combinedLogs != "" {
+			combinedLogs += "\n"
+		}
+		combinedLogs += result.Error
+	}
+	if combinedLogs != "" {
+		task.Record.ExecutionLogs = &combinedLogs
+	}
+
 	// 检查执行结果
 	if result.ExitCode != 0 {
 		err = fmt.Errorf("PT工具执行失败，退出码: %d, 错误信息: %s", result.ExitCode, result.Error)
 		return
-	}
-
-	// 保存执行日志
-	if result.Output != "" {
-		task.Record.ExecutionLogs = &result.Output
 	}
 
 	// 清理容器

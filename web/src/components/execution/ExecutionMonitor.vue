@@ -122,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, Delete } from '@element-plus/icons-vue'
 
@@ -251,6 +251,20 @@ const handleWebSocketMessage = (message: any) => {
       console.log('未知消息类型:', message)
   }
 }
+// 当 executionId 发生变化时，重连并清空旧状态
+watch(
+  () => props.executionId,
+  (newId, oldId) => {
+    if (newId && newId !== oldId) {
+      // 清空旧任务与日志
+      currentTask.value = null
+      logs.value = []
+
+      // 重连到新的 executionId
+      handleReconnect()
+    }
+  }
+)
 
 const handleProgressUpdate = (data: any) => {
   if (currentTask.value) {
