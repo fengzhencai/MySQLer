@@ -41,6 +41,7 @@ type ExecutionParams struct {
 	Charset         string `json:"charset"`           // 字符集
 	LockWaitTimeout int    `json:"lock_wait_timeout"` // 锁等待超时
 	OtherParams     string `json:"other_params"`      // 其他参数
+	NoCheckAlter    bool   `json:"no_check_alter"`    // 跳过check-alter预检
 }
 
 // ExecutionRecord 执行记录模型

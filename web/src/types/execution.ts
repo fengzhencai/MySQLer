@@ -12,6 +12,7 @@ export interface ExecutionParams {
   charset: string
   lock_wait_timeout: number
   other_params?: string
+  no_check_alter?: boolean
 }
 
 // 执行记录类型

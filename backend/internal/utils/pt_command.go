@@ -40,6 +40,7 @@ type PTOptions struct {
 	SetVars        string `json:"set_vars"`        // 设置MySQL变量
 	Recursion      int    `json:"recursion"`       // 递归级别
 	BinlogPosition string `json:"binlog_position"` // binlog位置
+	NoCheckAlter   bool   `json:"no_check_alter"`  // 跳过 check-alter 预检
 }
 
 // DDLType DDL操作类型
@@ -67,9 +68,9 @@ func NewPTCommandBuilder(conn *DatabaseConnection, table *TableInfo) *PTCommandB
 // getDefaultPTOptions 获取默认PT选项
 func getDefaultPTOptions() *PTOptions {
 	return &PTOptions{
-        ChunkSize:     3000,
-        MaxLoad:       "Threads_running=8000",
-        CriticalLoad:  "Threads_running=10000",
+		ChunkSize:     3000,
+		MaxLoad:       "Threads_running=8000",
+		CriticalLoad:  "Threads_running=10000",
 		CheckInterval: 1,
 		MaxLag:        1,
 		Charset:       "utf8mb4",
@@ -80,6 +81,7 @@ func getDefaultPTOptions() *PTOptions {
 		Statistics:    true,
 		Progress:      "time,5",
 		Recursion:     0,
+		NoCheckAlter:  false,
 	}
 }
 
@@ -199,6 +201,11 @@ func (b *PTCommandBuilder) buildCommand() (string, error) {
 		parts = append(parts, "--statistics")
 	}
 
+	// 可选：跳过 check-alter（某些场景如多语句或复杂语法组合时需要）
+	if b.Options.NoCheckAlter {
+		parts = append(parts, "--no-check-alter")
+	}
+
 	// 拼接命令
 	command := strings.Join(parts, " \\\n  ")
 
@@ -213,15 +220,72 @@ func (b *PTCommandBuilder) validateAndCleanAlterSQL(alterSQL string) (string, er
 	// 移除可能的分号
 	sql = strings.TrimSuffix(sql, ";")
 
-	// 检查是否以ALTER TABLE开头，如果是则移除
-	if strings.HasPrefix(strings.ToUpper(sql), "ALTER TABLE") {
-		// 找到表名后的部分
-		re := regexp.MustCompile(`(?i)^\s*ALTER\s+TABLE\s+(\S+)\s+(.+)$`)
-		matches := re.FindStringSubmatch(sql)
-		if len(matches) >= 3 {
-			sql = matches[2]
+	// 支持多条语句（; 或 换行分隔），并合并为单条 ALTER 子句列表
+	// 1) 先按分号拆分，再按换行拆分补充
+	stmtsRaw := regexp.MustCompile(`;\s*`).Split(sql, -1)
+	var stmts []string
+	for _, s := range stmtsRaw {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		// 如果还有独立的换行语句片段，按常见关键词拆分
+		// 但优先匹配 "alter table ..." 开头，以提取其后的子句
+		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(s)), "ALTER TABLE") {
+			// 兼容换行：表名可能换到下一行；并允许点号、反引号
+			re := regexp.MustCompile(`(?is)^\s*ALTER\s+TABLE\s+([^\s]+)\s+(.+)$`)
+			m := re.FindStringSubmatch(s)
+			if len(m) >= 3 {
+				s = strings.TrimSpace(m[2])
+			}
+		}
+		if s != "" {
+			stmts = append(stmts, s)
 		}
 	}
+
+	if len(stmts) == 0 {
+		return "", fmt.Errorf("ALTER语句不能为空")
+	}
+
+	// 过滤掉多余的前缀“alter table ...”片段与空片段
+	normalized := make([]string, 0, len(stmts))
+	for _, clause := range stmts {
+		cs := strings.TrimSpace(clause)
+		if cs == "" {
+			continue
+		}
+		if strings.HasPrefix(strings.ToUpper(cs), "ALTER TABLE") {
+			// 再次剥离
+			re2 := regexp.MustCompile(`(?is)^\s*ALTER\s+TABLE\s+([^\s]+)\s+(.+)$`)
+			if m2 := re2.FindStringSubmatch(cs); len(m2) >= 3 {
+				cs = strings.TrimSpace(m2[2])
+			}
+		}
+		if cs != "" {
+			normalized = append(normalized, cs)
+		}
+	}
+
+	if len(normalized) == 0 {
+		return "", fmt.Errorf("ALTER语句不能为空")
+	}
+
+	// 将多个子句合并为一条：以逗号连接
+	if len(normalized) > 1 {
+		sql = strings.Join(normalized, ", ")
+	} else {
+		sql = normalized[0]
+	}
+
+	// 兜底：全局移除任何残留的 "ALTER TABLE <tbl>" 前缀（防止异常换行/缩进导致未剥离）
+	reGlobal := regexp.MustCompile(`(?is)\balter\s+table\s+[` + "`" + `\w\.-]+[` + "`" + `]?\s+`)
+	sql = reGlobal.ReplaceAllString(sql, "")
+
+	// 清理可能重复的逗号/空白
+	sql = strings.TrimSpace(sql)
+	sql = strings.TrimPrefix(sql, ",")
+	sql = strings.TrimSpace(sql)
 
 	// 检查是否包含危险操作
 	if err := b.checkDangerousOperations(sql); err != nil {

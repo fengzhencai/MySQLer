@@ -57,6 +57,7 @@ type PreviewCommandResponse struct {
 	TableInfo            *utils.TableInfo       `json:"table_info"`
 	EstimatedTime        string                 `json:"estimated_time"`
 	RecommendedChunkSize int                    `json:"recommended_chunk_size"`
+	NoCheckAlter         bool                   `json:"no_check_alter"`
 }
 
 // List 获取执行记录列表（分页与过滤）
@@ -183,6 +184,7 @@ func (s *ExecutionService) PreviewCommand(req *PreviewCommandRequest) (*PreviewC
 			Print:        true,
 			Statistics:   true,
 			DropOldTable: true,
+			NoCheckAlter: req.ExecutionParams.NoCheckAlter,
 		}
 		// 将锁等待超时映射到 --set-vars
 		if req.ExecutionParams.LockWaitTimeout > 0 {
@@ -236,6 +238,7 @@ func (s *ExecutionService) PreviewCommand(req *PreviewCommandRequest) (*PreviewC
 		TableInfo:            tableInfo,
 		EstimatedTime:        riskAnalysis["estimated_time"].(string),
 		RecommendedChunkSize: recommendedChunkSize,
+		NoCheckAlter:         req.ExecutionParams != nil && req.ExecutionParams.NoCheckAlter,
 	}, nil
 }
 
@@ -314,6 +317,7 @@ func (s *ExecutionService) Create(req *CreateExecutionRequest, userID string) (*
 			Print:        true,
 			Statistics:   true,
 			DropOldTable: true,
+			NoCheckAlter: req.ExecutionParams.NoCheckAlter,
 		}
 		if req.ExecutionParams.LockWaitTimeout > 0 {
 			ptOptions.SetVars = fmt.Sprintf("lock_wait_timeout=%d", req.ExecutionParams.LockWaitTimeout)

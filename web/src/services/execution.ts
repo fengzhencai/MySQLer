@@ -15,18 +15,11 @@ export interface PreviewCommandRequest {
 // 预览命令响应类型
 export interface PreviewCommandResponse {
   command: string
-  risk_level: string
-  risk_warnings: string[]
-  estimated_duration: string
-  chunk_size: number
-  tables_info: {
-    row_count: number
-    avg_row_length: number
-    data_length: number
-    index_length: number
-    engine: string
-    table_comment: string
-  }
+  risk_analysis?: any
+  table_info?: any
+  estimated_time?: string
+  recommended_chunk_size?: number
+  no_check_alter?: boolean
 }
 
 // 执行状态响应类型
